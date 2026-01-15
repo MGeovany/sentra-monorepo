@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -89,8 +91,8 @@ func findProjectRoots(scanRoot string) ([]string, error) {
 	return roots, nil
 }
 
-func scanProjectEnvFiles(projectRoot string) ([]string, error) {
-	var envFiles []string
+func scanProjectEnvFiles(projectRoot string) ([]EnvFile, error) {
+	var envFiles []EnvFile
 	var ignoreStack []gitIgnoreFile
 
 	var walk func(dir string) error
@@ -134,11 +136,19 @@ func scanProjectEnvFiles(projectRoot string) ([]string, error) {
 				continue
 			}
 
-			if isIgnoredByGitignore(ignoreStack, fullPath, relFromProject, false) {
+			// Always detect env files, even if gitignored.
+			// Most repos intentionally ignore `.env` files.
+			if isEnvFileName(name) {
+				h, err := hashEnvFile(relFromProject, fullPath)
+				if err != nil {
+					return err
+				}
+				envFiles = append(envFiles, EnvFile{Path: relFromProject, Hash: h})
 				continue
 			}
-			if isEnvFileName(name) {
-				envFiles = append(envFiles, relFromProject)
+
+			if isIgnoredByGitignore(ignoreStack, fullPath, relFromProject, false) {
+				continue
 			}
 		}
 
@@ -149,8 +159,24 @@ func scanProjectEnvFiles(projectRoot string) ([]string, error) {
 		return nil, err
 	}
 
-	sort.Strings(envFiles)
+	sort.Slice(envFiles, func(i, j int) bool {
+		return envFiles[i].Path < envFiles[j].Path
+	})
 	return envFiles, nil
+}
+
+func hashEnvFile(relPathFromProject string, filePath string) (string, error) {
+	b, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	h := sha256.New()
+	// Hash = content + path relativo
+	h.Write([]byte(relPathFromProject))
+	h.Write([]byte("\n"))
+	h.Write(b)
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func isIgnoredDirName(name string) bool {
@@ -159,10 +185,52 @@ func isIgnoredDirName(name string) bool {
 }
 
 func isEnvFileName(name string) bool {
+	// Only count real env configs.
+	// Accepted:
+	// - .env
+	// - .env.local
+	// - .env.{development,staging,production,test}
+	// - .env.{development,staging,production,test}.local
 	if name == ".env" {
 		return true
 	}
-	return strings.HasPrefix(name, ".env")
+
+	if !strings.HasPrefix(name, ".env.") {
+		return false
+	}
+
+	suffix := strings.TrimPrefix(name, ".env.")
+	parts := strings.Split(suffix, ".")
+
+	// Exclude placeholder/backup files commonly committed to repos.
+	for _, part := range parts {
+		switch part {
+		case "example", "template", "sample", "backup", "bak":
+			return false
+		}
+	}
+
+	allowedBase := map[string]struct{}{
+		"local":       {},
+		"development": {},
+		"staging":     {},
+		"production":  {},
+		"test":        {},
+	}
+
+	// .env.<base>
+	if len(parts) == 1 {
+		_, ok := allowedBase[parts[0]]
+		return ok
+	}
+
+	// .env.<base>.local
+	if len(parts) == 2 && parts[1] == "local" {
+		_, ok := allowedBase[parts[0]]
+		return ok
+	}
+
+	return false
 }
 
 func isIgnoredByGitignore(stack []gitIgnoreFile, fullPath string, relFromProject string, isDir bool) bool {
