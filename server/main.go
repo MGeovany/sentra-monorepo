@@ -25,8 +25,7 @@ func main() {
 
 	var verifier auth.Verifier = auth.DisabledVerifier{}
 	if cfg.SupabaseURL != "" {
-		jwksURL := cfg.SupabaseURL + "/auth/v1/.well-known/jwks.json"
-		verifier = auth.NewJWKSVerifier(jwksURL)
+		verifier = auth.NewJWKSVerifier(cfg.SupabaseURL)
 		log.Printf("auth jwks configured")
 	}
 

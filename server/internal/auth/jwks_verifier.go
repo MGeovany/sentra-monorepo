@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +43,8 @@ type supabaseClaims struct {
 
 type JWKSVerifier struct {
 	jwksURL string
+	expectedIssuer   string
+	expectedAudience string
 
 	mu        sync.RWMutex
 	keys      map[string]any
@@ -50,9 +53,19 @@ type JWKSVerifier struct {
 	httpClient *http.Client
 }
 
-func NewJWKSVerifier(jwksURL string) *JWKSVerifier {
+func NewJWKSVerifier(supabaseURL string) *JWKSVerifier {
+	base := strings.TrimRight(strings.TrimSpace(supabaseURL), "/")
+	jwksURL := ""
+	issuer := ""
+	if base != "" {
+		jwksURL = base + "/auth/v1/.well-known/jwks.json"
+		issuer = base + "/auth/v1"
+	}
+
 	return &JWKSVerifier{
 		jwksURL: jwksURL,
+		expectedIssuer:   issuer,
+		expectedAudience: "authenticated",
 		keys:    map[string]any{},
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
@@ -67,8 +80,12 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 
 	// Fast path: parse with existing keys.
 	claims := &supabaseClaims{}
-	parsed, err := jwt.ParseWithClaims(tokenString, claims, v.keyFunc)
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}))
+	parsed, err := parser.ParseWithClaims(tokenString, claims, v.keyFunc)
 	if err == nil && parsed != nil && parsed.Valid {
+		if err := v.validateClaims(claims); err != nil {
+			return User{}, err
+		}
 		return User{ID: claims.Subject, Email: claims.Email, Role: claims.Role}, nil
 	}
 
@@ -78,7 +95,7 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 	}
 
 	claims = &supabaseClaims{}
-	parsed, err = jwt.ParseWithClaims(tokenString, claims, v.keyFunc)
+	parsed, err = parser.ParseWithClaims(tokenString, claims, v.keyFunc)
 	if err != nil {
 		return User{}, err
 	}
@@ -86,7 +103,36 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 		return User{}, fmt.Errorf("invalid token")
 	}
 
+	if err := v.validateClaims(claims); err != nil {
+		return User{}, err
+	}
+
 	return User{ID: claims.Subject, Email: claims.Email, Role: claims.Role}, nil
+}
+
+func (v *JWKSVerifier) validateClaims(c *supabaseClaims) error {
+	if c == nil {
+		return fmt.Errorf("invalid token claims")
+	}
+	if strings.TrimSpace(c.Subject) == "" {
+		return fmt.Errorf("invalid token: missing sub")
+	}
+	if v.expectedIssuer != "" && c.Issuer != v.expectedIssuer {
+		return fmt.Errorf("invalid token: unexpected iss")
+	}
+	if v.expectedAudience != "" {
+		ok := false
+		for _, aud := range c.Audience {
+			if aud == v.expectedAudience {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return fmt.Errorf("invalid token: unexpected aud")
+		}
+	}
+	return nil
 }
 
 func (v *JWKSVerifier) keyFunc(token *jwt.Token) (any, error) {
