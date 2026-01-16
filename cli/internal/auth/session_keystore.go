@@ -97,4 +97,3 @@ func getOrCreateSessionKeyFile() ([]byte, error) {
 	}
 	return k, nil
 }
-

@@ -105,4 +105,3 @@ func decryptSessionJSON(maybeEncrypted []byte) ([]byte, bool, error) {
 	}
 	return pt, true, nil
 }
-

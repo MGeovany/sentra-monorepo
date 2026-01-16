@@ -42,7 +42,7 @@ type supabaseClaims struct {
 }
 
 type JWKSVerifier struct {
-	jwksURL string
+	jwksURL          string
 	expectedIssuer   string
 	expectedAudience string
 
@@ -63,10 +63,10 @@ func NewJWKSVerifier(supabaseURL string) *JWKSVerifier {
 	}
 
 	return &JWKSVerifier{
-		jwksURL: jwksURL,
+		jwksURL:          jwksURL,
 		expectedIssuer:   issuer,
 		expectedAudience: "authenticated",
-		keys:    map[string]any{},
+		keys:             map[string]any{},
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
