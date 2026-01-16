@@ -2,27 +2,6 @@
 
 Sentra is a developer-first CLI for scanning, staging and pushing `.env*` files.
 
-## Setup
-
-Set these env vars before logging in (in `.env` at repo root is fine):
-
-- `SUPABASE_URL` (e.g. `https://<project>.supabase.co`)
-- `SUPABASE_ANON_KEY`
-
-Also, Supabase requires allowlisting redirect URLs.
-Add this to your Supabase Dashboard → Auth → URL Configuration → Additional Redirect URLs:
-
-- `http://127.0.0.1:53124/callback`
-
-If the port is taken, set `SENTRA_AUTH_PORT` and allowlist the matching URL.
-
-After login, Sentra stores local state under `~/.sentra/`:
-
-- `~/.sentra/session.json` OAuth session (tokens)
-- `~/.sentra/config.json` local config (`machine_id`, `user_id`)
-- `~/.sentra/index.json` staged env files
-- `~/.sentra/state.json` last known scan state
-
 ## Commands
 
 ### `sentra login`
@@ -83,6 +62,7 @@ Usage:
 Pushes local commits to the remote.
 
 - If there is no local session, it triggers `sentra login` automatically.
+- Ensures the current `machine_id` is registered in the remote DB via `SENTRA_SERVER_URL`.
 
 Usage:
 
