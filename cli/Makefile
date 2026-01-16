@@ -31,3 +31,6 @@ run:
 
 build:
 	go build -o bin/sentra ./cmd/sentra
+
+login:
+	go run ./cmd/sentra login

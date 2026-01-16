@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mgeovany/sentra/internal/index"
-	"github.com/mgeovany/sentra/internal/scanner"
+	"github.com/mgeovany/sentra/cli/internal/index"
+	"github.com/mgeovany/sentra/cli/internal/scanner"
 )
 
 func runAdd(args []string) error {

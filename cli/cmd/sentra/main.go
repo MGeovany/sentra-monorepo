@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mgeovany/sentra/internal/cli"
+	"github.com/mgeovany/sentra/cli/internal/cli"
 )
 
 func main() {

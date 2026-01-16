@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mgeovany/sentra/internal/commit"
-	"github.com/mgeovany/sentra/internal/index"
+	"github.com/mgeovany/sentra/cli/internal/commit"
+	"github.com/mgeovany/sentra/cli/internal/index"
 )
 
 func runCommit(args []string) error {

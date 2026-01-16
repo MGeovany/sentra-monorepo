@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mgeovany/sentra/internal/commit"
+	"github.com/mgeovany/sentra/cli/internal/commit"
 )
 
 func runLog() error {

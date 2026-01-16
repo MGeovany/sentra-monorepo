@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mgeovany/sentra/internal/scanner"
-	"github.com/mgeovany/sentra/internal/state"
+	"github.com/mgeovany/sentra/cli/internal/scanner"
+	"github.com/mgeovany/sentra/cli/internal/state"
 )
 
 func runStatus() error {

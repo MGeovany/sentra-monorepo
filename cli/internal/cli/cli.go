@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mgeovany/sentra/internal/scanner"
+	"github.com/mgeovany/sentra/cli/internal/scanner"
 )
 
 func Execute(args []string) error {
@@ -17,7 +17,13 @@ func Execute(args []string) error {
 	}
 
 	switch args[0] {
+	case "login":
+		if len(args) > 1 {
+			return errors.New("sentra login does not accept flags/args yet")
+		}
+		return runLogin()
 	case "scan":
+
 		if len(args) > 1 {
 			return errors.New("sentra scan does not accept flags/args yet")
 		}
@@ -47,7 +53,7 @@ func Execute(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sentra scan | sentra add | sentra status | sentra commit | sentra log | sentra push")
+	return errors.New("usage: sentra login | sentra scan | sentra add | sentra status | sentra commit | sentra log | sentra push")
 }
 
 func runScan() error {

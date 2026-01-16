@@ -3,7 +3,7 @@ package state
 import (
 	"path/filepath"
 
-	"github.com/mgeovany/sentra/internal/scanner"
+	"github.com/mgeovany/sentra/cli/internal/scanner"
 )
 
 func FromScan(scanRoot string, projects []scanner.Project) (State, error) {

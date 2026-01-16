@@ -5,10 +5,19 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mgeovany/sentra/internal/commit"
+	"github.com/mgeovany/sentra/cli/internal/auth"
+	"github.com/mgeovany/sentra/cli/internal/commit"
 )
 
 func runPush() error {
+	// Require auth before pushing to remote.
+	if _, ok, _ := auth.LoadSession(); !ok {
+		fmt.Println("please login to push changes to remote")
+		if err := runLogin(); err != nil {
+			return err
+		}
+	}
+
 	commits, err := commit.List()
 	if err != nil {
 		return err
