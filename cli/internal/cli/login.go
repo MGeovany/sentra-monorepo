@@ -215,7 +215,7 @@ func runLogin() error {
 		defer cancel()
 		if err := registerMachine(ctx, tr.AccessToken); err != nil {
 			fmt.Printf("Warning: could not register user/machine with remote: %v\n", err)
-			fmt.Println("Hint: check SENTRA_SERVER_URL and ensure the server has SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
+			fmt.Println("Hint: check SERVER_PORT and ensure the server has SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
 		}
 	}
 

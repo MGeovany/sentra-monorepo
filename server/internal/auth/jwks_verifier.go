@@ -80,7 +80,13 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 
 	// Fast path: parse with existing keys.
 	claims := &supabaseClaims{}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}))
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256", "ES256"}),
+		jwt.WithExpirationRequired(),
+		jwt.WithLeeway(30*time.Second),
+		jwt.WithIssuer(v.expectedIssuer),
+		jwt.WithAudience(v.expectedAudience),
+	)
 	parsed, err := parser.ParseWithClaims(tokenString, claims, v.keyFunc)
 	if err == nil && parsed != nil && parsed.Valid {
 		if err := v.validateClaims(claims); err != nil {
@@ -91,7 +97,7 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 
 	// If key not found / stale keys, refresh once.
 	if refreshErr := v.refresh(); refreshErr != nil {
-		return User{}, err
+		return User{}, refreshErr
 	}
 
 	claims = &supabaseClaims{}
@@ -117,21 +123,8 @@ func (v *JWKSVerifier) validateClaims(c *supabaseClaims) error {
 	if strings.TrimSpace(c.Subject) == "" {
 		return fmt.Errorf("invalid token: missing sub")
 	}
-	if v.expectedIssuer != "" && c.Issuer != v.expectedIssuer {
-		return fmt.Errorf("invalid token: unexpected iss")
-	}
-	if v.expectedAudience != "" {
-		ok := false
-		for _, aud := range c.Audience {
-			if aud == v.expectedAudience {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			return fmt.Errorf("invalid token: unexpected aud")
-		}
-	}
+	// Note: iss/aud/exp are validated by jwt.Parser via WithIssuer/WithAudience and
+	// WithExpirationRequired. We keep a minimal check here for required app claims.
 	return nil
 }
 

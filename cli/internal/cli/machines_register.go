@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -34,11 +35,16 @@ func registerMachine(ctx context.Context, accessToken string) error {
 		name = "unknown"
 	}
 
-	serverURL := strings.TrimSpace(os.Getenv("SENTRA_SERVER_URL"))
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
+	serverPort := os.Getenv("SERVER_PORT")
+	serverURL := "http://localhost:" + serverPort
+
+	if serverPort == "" {
+		serverPort = "8080"
+	} else {
+		serverURL = "http://localhost:" + serverPort
 	}
-	serverURL = strings.TrimRight(serverURL, "/")
+
+	log.Printf("serverURL: %s", serverURL)
 
 	endpoint := serverURL + "/machines/register"
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 
@@ -70,7 +69,9 @@ func (s SupabaseMachineStore) Register(ctx context.Context, userID, machineID, m
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusNoContent {
+	// PostgREST can return 200/201/204 for successful upserts depending on
+	// configuration and Prefer headers.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
 
