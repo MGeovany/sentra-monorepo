@@ -80,12 +80,23 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 		}
 
 		// If already registered, do not allow changing the stored device key.
-		if existing, ok, err := store.DevicePubKey(r.Context(), user.ID, req.MachineID); err == nil && ok {
-			if strings.TrimSpace(existing) != req.DevicePubKey {
-				w.WriteHeader(http.StatusConflict)
-				_, _ = io.WriteString(w, "device key mismatch")
-				return
+		existing, ok, err := store.DevicePubKey(r.Context(), user.ID, req.MachineID)
+		if err != nil {
+			log.Printf("machines/register device key lookup failed user_id=%s machine_id=%s err=%v", user.ID, req.MachineID, err)
+			switch err {
+			case repo.ErrDBNotConfigured:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, "db not configured")
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, "device key lookup failed")
 			}
+			return
+		}
+		if ok && strings.TrimSpace(existing) != req.DevicePubKey {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, "device key mismatch")
+			return
 		}
 
 		err = store.Register(r.Context(), user.ID, req.MachineID, req.MachineName, req.DevicePubKey)
