@@ -18,6 +18,14 @@ type Client struct {
 	apiKey     string
 }
 
+func (c *Client) APIKey() string {
+	return c.apiKey
+}
+
+func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	return c.httpClient.Do(req)
+}
+
 func New(baseURL, apiKey string) (*Client, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	apiKey = strings.TrimSpace(apiKey)
@@ -73,7 +81,7 @@ func (c *Client) PostJSON(ctx context.Context, url string, body any, headers map
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {

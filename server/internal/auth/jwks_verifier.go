@@ -45,6 +45,7 @@ type JWKSVerifier struct {
 	jwksURL          string
 	expectedIssuer   string
 	expectedAudience string
+	allowedRoles     map[string]struct{}
 
 	mu        sync.RWMutex
 	keys      map[string]any
@@ -66,7 +67,10 @@ func NewJWKSVerifier(supabaseURL string) *JWKSVerifier {
 		jwksURL:          jwksURL,
 		expectedIssuer:   issuer,
 		expectedAudience: "authenticated",
-		keys:             map[string]any{},
+		allowedRoles: map[string]struct{}{
+			"authenticated": {},
+		},
+		keys: map[string]any{},
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -80,7 +84,13 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 
 	// Fast path: parse with existing keys.
 	claims := &supabaseClaims{}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}))
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256", "ES256"}),
+		jwt.WithExpirationRequired(),
+		jwt.WithLeeway(30*time.Second),
+		jwt.WithIssuer(v.expectedIssuer),
+		jwt.WithAudience(v.expectedAudience),
+	)
 	parsed, err := parser.ParseWithClaims(tokenString, claims, v.keyFunc)
 	if err == nil && parsed != nil && parsed.Valid {
 		if err := v.validateClaims(claims); err != nil {
@@ -91,7 +101,7 @@ func (v *JWKSVerifier) Verify(tokenString string) (User, error) {
 
 	// If key not found / stale keys, refresh once.
 	if refreshErr := v.refresh(); refreshErr != nil {
-		return User{}, err
+		return User{}, refreshErr
 	}
 
 	claims = &supabaseClaims{}
@@ -117,25 +127,32 @@ func (v *JWKSVerifier) validateClaims(c *supabaseClaims) error {
 	if strings.TrimSpace(c.Subject) == "" {
 		return fmt.Errorf("invalid token: missing sub")
 	}
-	if v.expectedIssuer != "" && c.Issuer != v.expectedIssuer {
-		return fmt.Errorf("invalid token: unexpected iss")
+
+	// Additional hardening: only accept expected roles.
+	role := strings.TrimSpace(c.Role)
+	if role == "" {
+		return fmt.Errorf("invalid token: missing role")
 	}
-	if v.expectedAudience != "" {
-		ok := false
-		for _, aud := range c.Audience {
-			if aud == v.expectedAudience {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			return fmt.Errorf("invalid token: unexpected aud")
+	if len(v.allowedRoles) > 0 {
+		if _, ok := v.allowedRoles[role]; !ok {
+			return fmt.Errorf("invalid token: unexpected role")
 		}
 	}
+
+	// Note: iss/aud/exp are validated by jwt.Parser via WithIssuer/WithAudience and
+	// WithExpirationRequired.
 	return nil
 }
 
 func (v *JWKSVerifier) keyFunc(token *jwt.Token) (any, error) {
+	// Optional hardening: require typ=JWT if present.
+	// We don't enforce it strictly because some providers omit it.
+	if typ, ok := token.Header["typ"].(string); ok {
+		if strings.TrimSpace(typ) != "" && strings.TrimSpace(typ) != "JWT" {
+			return nil, fmt.Errorf("unexpected typ")
+		}
+	}
+
 	kid, _ := token.Header["kid"].(string)
 	if kid == "" {
 		return nil, fmt.Errorf("missing kid")
@@ -184,7 +201,7 @@ func (v *JWKSVerifier) refresh() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("jwks fetch failed: %s", resp.Status)

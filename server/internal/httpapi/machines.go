@@ -12,8 +12,10 @@ import (
 )
 
 type registerMachineRequest struct {
-	MachineID   string `json:"machine_id"`
-	MachineName string `json:"machine_name"`
+	MachineID     string `json:"machine_id"`
+	MachineName   string `json:"machine_name"`
+	DevicePubKey  string `json:"device_pub_key"`
+	DeviceKeyType string `json:"device_key_type"`
 }
 
 func registerMachineHandler(store repo.MachineStore) http.Handler {
@@ -33,20 +35,71 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 			return
 		}
 
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		var req registerMachineRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.Unmarshal(body, &req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		req.MachineID = strings.TrimSpace(req.MachineID)
 		req.MachineName = strings.TrimSpace(req.MachineName)
-		if req.MachineID == "" || req.MachineName == "" {
+		req.DevicePubKey = strings.TrimSpace(req.DevicePubKey)
+		req.DeviceKeyType = strings.TrimSpace(req.DeviceKeyType)
+		if req.MachineID == "" || req.MachineName == "" || req.DevicePubKey == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if req.DeviceKeyType == "" {
+			req.DeviceKeyType = "ed25519"
+		}
+		if req.DeviceKeyType != "ed25519" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		err := store.Register(r.Context(), user.ID, req.MachineID, req.MachineName)
+		// Device binding bootstrap: require a valid device signature using the provided public key.
+		// This prevents registering an arbitrary key without proof of possession.
+		machineIDHdr := strings.TrimSpace(r.Header.Get("X-Sentra-Machine-ID"))
+		ts := strings.TrimSpace(r.Header.Get("X-Sentra-Timestamp"))
+		sig := strings.TrimSpace(r.Header.Get("X-Sentra-Signature"))
+		if machineIDHdr == "" || ts == "" || sig == "" || machineIDHdr != req.MachineID {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, "unauthorized")
+			return
+		}
+		if err := auth.VerifyDeviceSignature(req.DevicePubKey, req.MachineID, ts, r.Method, r.URL.Path, body, sig); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, "unauthorized")
+			return
+		}
+
+		// If already registered, do not allow changing the stored device key.
+		existing, ok, err := store.DevicePubKey(r.Context(), user.ID, req.MachineID)
+		if err != nil {
+			log.Printf("machines/register device key lookup failed user_id=%s machine_id=%s err=%v", user.ID, req.MachineID, err)
+			switch err {
+			case repo.ErrDBNotConfigured:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, "db not configured")
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, "device key lookup failed")
+			}
+			return
+		}
+		if ok && strings.TrimSpace(existing) != req.DevicePubKey {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, "device key mismatch")
+			return
+		}
+
+		err = store.Register(r.Context(), user.ID, req.MachineID, req.MachineName, req.DevicePubKey)
 		if err != nil {
 			// Server-side logging for debugging/observability.
 			log.Printf("machines/register failed user_id=%s machine_id=%s machine_name=%s err=%v", user.ID, req.MachineID, req.MachineName, err)

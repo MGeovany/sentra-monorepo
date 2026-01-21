@@ -18,16 +18,33 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- Machines
 CREATE TABLE IF NOT EXISTS machines (
-  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  machine_id    TEXT NOT NULL,
-  machine_name  TEXT NOT NULL,
-  created_at    TIMESTAMP WITH TIME ZONE DEFAULT now()
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  machine_id      TEXT NOT NULL,
+  machine_name    TEXT NOT NULL,
+  device_pub_key  TEXT,
+  device_key_type TEXT DEFAULT 'ed25519',
+  created_at      TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 -- If the table existed before, ensure new columns are present.
 ALTER TABLE machines ADD COLUMN IF NOT EXISTS machine_id TEXT;
 ALTER TABLE machines ADD COLUMN IF NOT EXISTS machine_name TEXT;
+ALTER TABLE machines ADD COLUMN IF NOT EXISTS device_pub_key TEXT;
+ALTER TABLE machines ADD COLUMN IF NOT EXISTS device_key_type TEXT;
+
+-- Constrain device key types (idempotent).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    WHERE c.conname = 'machines_device_key_type_chk'
+      AND c.conrelid = 'public.machines'::regclass
+  ) THEN
+    EXECUTE 'ALTER TABLE public.machines ADD CONSTRAINT machines_device_key_type_chk CHECK (device_key_type IN (''ed25519''))';
+  END IF;
+END $$;
 
 -- Commits
 CREATE TABLE IF NOT EXISTS commits (

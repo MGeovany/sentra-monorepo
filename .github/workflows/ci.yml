@@ -74,11 +74,11 @@ jobs:
           fi
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.8.0
           working-directory: cli
-          install-mode: goinstall
+          install-mode: binary
 
       - name: Test
         working-directory: cli
@@ -118,11 +118,11 @@ jobs:
           fi
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.8.0
           working-directory: server
-          install-mode: goinstall
+          install-mode: binary
 
       - name: Test
         working-directory: server
