@@ -98,9 +98,11 @@ func saveSession(s Session, preserveSavedAt bool) error {
 
 func LoadSession() (Session, bool, error) {
 	// 1) Prefer OS credential store.
-	if s, ok, err := loadSessionKeyring(); err != nil {
+	s, ok, err := loadSessionKeyring()
+	if err != nil {
 		return Session{}, false, err
-	} else if ok {
+	}
+	if ok {
 		if s.AccessToken == "" {
 			return Session{}, false, nil
 		}
@@ -121,43 +123,45 @@ func LoadSession() (Session, bool, error) {
 		return Session{}, false, err
 	}
 
-	if plain, ok, err := decryptSessionJSON(b); err != nil {
+	plain, ok, err := decryptSessionJSON(b)
+	if err != nil {
 		return Session{}, false, fmt.Errorf("cannot decrypt session; please login again: %w", err)
-	} else if ok {
-		var s Session
-		if err := json.Unmarshal(plain, &s); err != nil {
+	}
+	if ok {
+		var sess Session
+		if err := json.Unmarshal(plain, &sess); err != nil {
 			return Session{}, false, fmt.Errorf("invalid session file: %w", err)
 		}
-		if s.AccessToken == "" {
+		if sess.AccessToken == "" {
 			return Session{}, false, nil
 		}
 
 		// Try to migrate into the OS keychain; if that succeeds, remove on-disk material.
-		if err := saveSessionKeyring(s, true); err == nil {
+		if err := saveSessionKeyring(sess, true); err == nil {
 			_ = removeLegacySessionFiles()
 		}
 
-		return s, true, nil
+		return sess, true, nil
 	}
 
 	// Legacy plaintext session.json: load and migrate.
-	var s Session
-	if err := json.Unmarshal(b, &s); err != nil {
+	var sess Session
+	if err := json.Unmarshal(b, &sess); err != nil {
 		return Session{}, false, fmt.Errorf("invalid session file: %w", err)
 	}
-	if s.AccessToken == "" {
+	if sess.AccessToken == "" {
 		return Session{}, false, nil
 	}
 
 	// Best-effort migration to encrypted format (ignore errors to avoid breaking existing installs).
 	// Preserve the original SavedAt so we don't extend token freshness for legacy sessions
 	// that lack a usable JWT exp claim.
-	_ = saveSession(s, true)
+	_ = saveSession(sess, true)
 
 	// Attempt to migrate into the OS keychain as well.
-	if err := saveSessionKeyring(s, true); err == nil {
+	if err := saveSessionKeyring(sess, true); err == nil {
 		_ = removeLegacySessionFiles()
 	}
 
-	return s, true, nil
+	return sess, true, nil
 }

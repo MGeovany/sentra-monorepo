@@ -46,7 +46,7 @@ func runLogin() error {
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	// Resolve the actual port (important when using 0).
 	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
@@ -120,12 +120,12 @@ func runLogin() error {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			if errDesc != "" || errName != "" || errCode != "" {
-				_, _ = w.Write([]byte(fmt.Sprintf(
+				_, _ = fmt.Fprintf(w,
 					"Login failed.\n\nSupabase returned:\n- error: %s\n- error_code: %s\n- error_description: %s\n\nFix: verify the GitHub provider settings in Supabase and the GitHub OAuth App callback URL.\n",
 					errName,
 					errCode,
 					errDesc,
-				)))
+				)
 				select {
 				case errCh <- fmt.Errorf("oauth error: %s (%s) %s", errName, errCode, errDesc):
 				default:

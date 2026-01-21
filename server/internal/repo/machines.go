@@ -123,7 +123,7 @@ func (s SupabaseMachineStore) DevicePubKey(ctx context.Context, userID, machineI
 	if err != nil {
 		return "", false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", false, fmt.Errorf("supabase select machines failed: status=%d body=%s", resp.StatusCode, string(b))

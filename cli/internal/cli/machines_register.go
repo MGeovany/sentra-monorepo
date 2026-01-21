@@ -38,13 +38,10 @@ func registerMachine(ctx context.Context, accessToken string) error {
 	}
 
 	serverPort := os.Getenv("SERVER_PORT")
-	serverURL := "http://localhost:" + serverPort
-
 	if serverPort == "" {
 		serverPort = "8080"
-	} else {
-		serverURL = "http://localhost:" + serverPort
 	}
+	serverURL := "http://localhost:" + serverPort
 
 	log.Printf("serverURL: %s", serverURL)
 
@@ -89,7 +86,7 @@ func registerMachine(ctx context.Context, accessToken string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

@@ -32,7 +32,7 @@ func loadGitIgnoreFile(dir string) (gitIgnoreFile, bool, error) {
 		}
 		return gitIgnoreFile{}, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var patterns []gitIgnorePattern
 	scanner := bufio.NewScanner(f)

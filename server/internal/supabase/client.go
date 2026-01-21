@@ -81,7 +81,7 @@ func (c *Client) PostJSON(ctx context.Context, url string, body any, headers map
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
