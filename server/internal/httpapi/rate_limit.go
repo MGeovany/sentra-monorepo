@@ -69,14 +69,16 @@ func requirePushRateLimit(next http.Handler) http.Handler {
 		next = http.NotFoundHandler()
 	}
 
-	rpm := int64(10)
+	// Default is tuned for local (loopback-only) pushes.
+	// A single "sentra push" can fan out into many per-project requests.
+	rpm := int64(300)
 	if v := strings.TrimSpace(os.Getenv("SENTRA_PUSH_RPM")); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			rpm = n
 		}
 	}
 
-	burst := float64(3)
+	burst := float64(60)
 	if v := strings.TrimSpace(os.Getenv("SENTRA_PUSH_BURST")); v != "" {
 		if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
 			burst = n

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,34 +86,50 @@ func runPush() error {
 				return err
 			}
 
-			hreq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(b))
-			if err != nil {
-				return err
-			}
-			hreq.Header.Set("Content-Type", "application/json")
-			hreq.Header.Set("Accept", "application/json")
-			hreq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(sess.AccessToken))
+			// Retry on 429 using Retry-After.
+			for attempt := 0; attempt < 5; attempt++ {
+				hreq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(b))
+				if err != nil {
+					return err
+				}
+				hreq.Header.Set("Content-Type", "application/json")
+				hreq.Header.Set("Accept", "application/json")
+				hreq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(sess.AccessToken))
 
-			ts := fmt.Sprintf("%d", time.Now().UTC().Unix())
-			nonce := uuid.NewString()
-			sig, err := auth.SignDeviceRequest(machineID, ts, nonce, http.MethodPost, "/push", b)
-			if err != nil {
-				return err
-			}
-			hreq.Header.Set("X-Sentra-Machine-ID", machineID)
-			hreq.Header.Set("X-Sentra-Timestamp", ts)
-			hreq.Header.Set("X-Sentra-Nonce", nonce)
-			hreq.Header.Set("X-Sentra-Signature", sig)
+				ts := fmt.Sprintf("%d", time.Now().UTC().Unix())
+				nonce := uuid.NewString()
+				sig, err := auth.SignDeviceRequest(machineID, ts, nonce, http.MethodPost, "/push", b)
+				if err != nil {
+					return err
+				}
+				hreq.Header.Set("X-Sentra-Machine-ID", machineID)
+				hreq.Header.Set("X-Sentra-Timestamp", ts)
+				hreq.Header.Set("X-Sentra-Nonce", nonce)
+				hreq.Header.Set("X-Sentra-Signature", sig)
 
-			resp, err := client.Do(hreq)
-			if err != nil {
-				return err
-			}
-			respBody, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+				resp, err := client.Do(hreq)
+				if err != nil {
+					return err
+				}
+				respBody, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
 
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				return fmt.Errorf("push failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+				if resp.StatusCode == http.StatusTooManyRequests {
+					retryAfter := 2 * time.Second
+					if v := strings.TrimSpace(resp.Header.Get("Retry-After")); v != "" {
+						if n, parseErr := strconv.Atoi(v); parseErr == nil && n > 0 {
+							retryAfter = time.Duration(n) * time.Second
+						}
+					}
+					time.Sleep(retryAfter)
+					continue
+				}
+
+				if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+					return fmt.Errorf("push failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+				}
+
+				break
 			}
 		}
 

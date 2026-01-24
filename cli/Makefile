@@ -34,3 +34,6 @@ build:
 
 login:
 	go run ./cmd/sentra login
+
+who:
+	go run ./cmd/sentra who
