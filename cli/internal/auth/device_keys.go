@@ -12,12 +12,13 @@ import (
 
 const (
 	deviceKeyringUser = "device-ed25519"
-	deviceSigVersion  = "v1"
+	deviceSigVersion  = "v2"
 )
 
-func canonicalDeviceMessage(machineID, timestamp, method, path string, body []byte) []byte {
+func canonicalDeviceMessage(machineID, timestamp, nonce, method, path string, body []byte) []byte {
 	// Must match server canonicalization.
-	b := make([]byte, 0, 64+len(body))
+	// Format: v2\n<ts>\n<METHOD>\n<path>\n<machine_id>\n<nonce>\n<body>
+	b := make([]byte, 0, 96+len(body))
 	b = append(b, deviceSigVersion...)
 	b = append(b, '\n')
 	b = append(b, timestamp...)
@@ -27,6 +28,8 @@ func canonicalDeviceMessage(machineID, timestamp, method, path string, body []by
 	b = append(b, path...)
 	b = append(b, '\n')
 	b = append(b, machineID...)
+	b = append(b, '\n')
+	b = append(b, nonce...)
 	b = append(b, '\n')
 	b = append(b, body...)
 	return b
@@ -68,13 +71,18 @@ func GetOrCreateDevicePublicKey() (string, error) {
 	return base64.RawURLEncoding.EncodeToString([]byte(pub)), nil
 }
 
-func SignDeviceRequest(machineID, timestamp, method, path string, body []byte) (string, error) {
+func SignDeviceRequest(machineID, timestamp, nonce, method, path string, body []byte) (string, error) {
 	priv, err := GetOrCreateDevicePrivateKey()
 	if err != nil {
 		return "", err
 	}
 
-	msg := canonicalDeviceMessage(machineID, timestamp, method, path, body)
+	nonce = strings.TrimSpace(nonce)
+	if nonce == "" {
+		return "", errors.New("missing nonce")
+	}
+
+	msg := canonicalDeviceMessage(machineID, timestamp, nonce, method, path, body)
 	sig := ed25519.Sign(priv, msg)
 	return base64.RawURLEncoding.EncodeToString(sig), nil
 }

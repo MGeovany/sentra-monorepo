@@ -21,6 +21,13 @@ func pushHandler(store repo.PushStore) http.Handler {
 		}
 
 		body, err := io.ReadAll(r.Body)
+		if err == nil {
+			if v := r.Context().Value(ctxKeySignedBody{}); v != nil {
+				if b, ok := v.([]byte); ok {
+					body = b
+				}
+			}
+		}
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return

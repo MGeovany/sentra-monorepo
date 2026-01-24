@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mgeovany/sentra/cli/internal/auth"
 	"github.com/mgeovany/sentra/cli/internal/commit"
 )
@@ -57,11 +58,10 @@ func runPush() error {
 		name = "unknown"
 	}
 
-	serverPort := strings.TrimSpace(os.Getenv("SERVER_PORT"))
-	if serverPort == "" {
-		serverPort = "8080"
+	serverURL, err := serverURLFromEnv()
+	if err != nil {
+		return err
 	}
-	serverURL := "http://localhost:" + serverPort
 	endpoint := serverURL + "/push"
 
 	homeDir, err := os.UserHomeDir()
@@ -94,12 +94,14 @@ func runPush() error {
 			hreq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(sess.AccessToken))
 
 			ts := fmt.Sprintf("%d", time.Now().UTC().Unix())
-			sig, err := auth.SignDeviceRequest(machineID, ts, http.MethodPost, "/push", b)
+			nonce := uuid.NewString()
+			sig, err := auth.SignDeviceRequest(machineID, ts, nonce, http.MethodPost, "/push", b)
 			if err != nil {
 				return err
 			}
 			hreq.Header.Set("X-Sentra-Machine-ID", machineID)
 			hreq.Header.Set("X-Sentra-Timestamp", ts)
+			hreq.Header.Set("X-Sentra-Nonce", nonce)
 			hreq.Header.Set("X-Sentra-Signature", sig)
 
 			resp, err := client.Do(hreq)

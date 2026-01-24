@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mgeovany/sentra/cli/internal/auth"
 )
 
@@ -37,11 +38,10 @@ func registerMachine(ctx context.Context, accessToken string) error {
 		name = "unknown"
 	}
 
-	serverPort := os.Getenv("SERVER_PORT")
-	if serverPort == "" {
-		serverPort = "8080"
+	serverURL, err := serverURLFromEnv()
+	if err != nil {
+		return err
 	}
-	serverURL := "http://localhost:" + serverPort
 
 	log.Printf("serverURL: %s", serverURL)
 
@@ -73,12 +73,14 @@ func registerMachine(ctx context.Context, accessToken string) error {
 
 	// Device binding: sign this request with the device key.
 	ts := fmt.Sprintf("%d", time.Now().UTC().Unix())
-	sig, err := auth.SignDeviceRequest(cfg.MachineID, ts, http.MethodPost, "/machines/register", b)
+	nonce := uuid.NewString()
+	sig, err := auth.SignDeviceRequest(cfg.MachineID, ts, nonce, http.MethodPost, "/machines/register", b)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("X-Sentra-Machine-ID", cfg.MachineID)
 	req.Header.Set("X-Sentra-Timestamp", ts)
+	req.Header.Set("X-Sentra-Nonce", nonce)
 	req.Header.Set("X-Sentra-Signature", sig)
 
 	client := &http.Client{Timeout: 10 * time.Second}

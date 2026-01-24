@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mgeovany/sentra/server/internal/auth"
 	"github.com/mgeovany/sentra/server/internal/repo"
@@ -28,6 +29,8 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok || strings.TrimSpace(user.ID) == "" {
@@ -68,12 +71,25 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 		machineIDHdr := strings.TrimSpace(r.Header.Get("X-Sentra-Machine-ID"))
 		ts := strings.TrimSpace(r.Header.Get("X-Sentra-Timestamp"))
 		sig := strings.TrimSpace(r.Header.Get("X-Sentra-Signature"))
+		nonce := strings.TrimSpace(r.Header.Get("X-Sentra-Nonce"))
 		if machineIDHdr == "" || ts == "" || sig == "" || machineIDHdr != req.MachineID {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, "unauthorized")
 			return
 		}
-		if err := auth.VerifyDeviceSignature(req.DevicePubKey, req.MachineID, ts, r.Method, r.URL.Path, body, sig); err != nil {
+		if nonce == "" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusUpgradeRequired)
+			_, _ = io.WriteString(w, "Please update Sentra CLI (requires nonce-signed requests).")
+			return
+		}
+		if err := auth.VerifyDeviceSignature(req.DevicePubKey, req.MachineID, ts, nonce, r.Method, r.URL.Path, body, sig); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, "unauthorized")
+			return
+		}
+		key := strings.TrimSpace(user.ID) + "\n" + req.MachineID + "\n" + nonce
+		if recentNonces.seenOrMark(key, 10*time.Minute) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, "unauthorized")
 			return

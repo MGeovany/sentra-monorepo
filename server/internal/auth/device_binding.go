@@ -12,13 +12,12 @@ import (
 )
 
 const (
-	deviceSigVersion = "v1"
+	deviceSigVersion = "v2"
 )
 
-func canonicalDeviceMessage(machineID, timestamp, method, path string, body []byte) []byte {
-	// Keep this canonical and stable across versions.
-	// Format: v1\n<ts>\n<METHOD>\n<path>\n<machine_id>\n<body>
-	b := make([]byte, 0, 64+len(body))
+func canonicalDeviceMessage(machineID, timestamp, nonce, method, path string, body []byte) []byte {
+	// Format: v2\n<ts>\n<METHOD>\n<path>\n<machine_id>\n<nonce>\n<body>
+	b := make([]byte, 0, 96+len(body))
 	b = append(b, deviceSigVersion...)
 	b = append(b, '\n')
 	b = append(b, timestamp...)
@@ -29,16 +28,19 @@ func canonicalDeviceMessage(machineID, timestamp, method, path string, body []by
 	b = append(b, '\n')
 	b = append(b, machineID...)
 	b = append(b, '\n')
+	b = append(b, nonce...)
+	b = append(b, '\n')
 	b = append(b, body...)
 	return b
 }
 
-func VerifyDeviceSignature(devicePubKeyB64, machineID, timestamp, method, path string, body []byte, sigB64 string) error {
+func VerifyDeviceSignature(devicePubKeyB64, machineID, timestamp, nonce, method, path string, body []byte, sigB64 string) error {
 	devicePubKeyB64 = strings.TrimSpace(devicePubKeyB64)
 	sigB64 = strings.TrimSpace(sigB64)
 	machineID = strings.TrimSpace(machineID)
 	timestamp = strings.TrimSpace(timestamp)
-	if devicePubKeyB64 == "" || sigB64 == "" || machineID == "" || timestamp == "" {
+	nonce = strings.TrimSpace(nonce)
+	if devicePubKeyB64 == "" || sigB64 == "" || machineID == "" || timestamp == "" || nonce == "" {
 		return errors.New("missing device signature fields")
 	}
 
@@ -69,7 +71,7 @@ func VerifyDeviceSignature(devicePubKeyB64, machineID, timestamp, method, path s
 		return errors.New("invalid signature length")
 	}
 
-	msg := canonicalDeviceMessage(machineID, timestamp, method, path, body)
+	msg := canonicalDeviceMessage(machineID, timestamp, nonce, method, path, body)
 	if subtle.ConstantTimeByteEq(boolToByte(ed25519.Verify(pub, msg, sigRaw)), 1) != 1 {
 		return errors.New("invalid signature")
 	}

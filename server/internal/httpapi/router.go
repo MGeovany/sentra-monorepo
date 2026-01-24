@@ -30,8 +30,8 @@ func New(deps Deps) http.Handler {
 		_ = json.NewEncoder(w).Encode(user)
 	})))
 
-	mux.Handle("/machines/register", deps.Auth.Require(registerMachineHandler(deps.Machines)))
-	mux.Handle("/push", deps.Auth.Require(requireDeviceSignature(deps.Machines, pushHandler(deps.Push))))
+	mux.Handle("/machines/register", requireLoopback(deps.Auth.Require(registerMachineHandler(deps.Machines))))
+	mux.Handle("/push", requireLoopback(deps.Auth.Require(requirePushRateLimit(requireDeviceSignature(deps.Machines, pushHandler(deps.Push))))))
 
 	return mux
 }

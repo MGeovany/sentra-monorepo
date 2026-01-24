@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,7 +48,7 @@ func main() {
 	h := httpapi.New(httpapi.Deps{Auth: middleware, Machines: machines, Push: push})
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
+		Addr:              net.JoinHostPort(cfg.Host, cfg.Port),
 		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
