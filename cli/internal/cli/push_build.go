@@ -64,6 +64,9 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 			var blob string
 			var st *pushStorageV1
 			if byos {
+				if s3 == nil {
+					return nil, fmt.Errorf("byos enabled but s3 client is nil")
+				}
 				raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(blobB64))
 				if err != nil {
 					return nil, err

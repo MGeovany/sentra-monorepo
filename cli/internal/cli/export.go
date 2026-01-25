@@ -103,12 +103,12 @@ func runExport(args []string) error {
 		cipherName := strings.TrimSpace(f.Cipher)
 		blobB64 := strings.TrimSpace(f.BlobB64)
 		if blobB64 == "" && strings.TrimSpace(f.StorageKey) != "" {
-			s3cfg, enabled, err := storage.LoadS3ConfigFromEnv()
+			s3cfg, s3c, enabled, err := storage.ResolveS3()
 			if err != nil {
 				return err
 			}
 			if !enabled {
-				return fmt.Errorf("export requires S3 credentials (set SENTRA_BYOS=1 and SENTRA_S3_* env vars)")
+				return fmt.Errorf("export requires storage setup (run: sentra storage setup)")
 			}
 			// Prefer server-provided location if present.
 			if strings.TrimSpace(f.StorageBucket) != "" {
@@ -119,10 +119,6 @@ func runExport(args []string) error {
 			}
 			if strings.TrimSpace(f.StorageRegion) != "" {
 				s3cfg.Region = strings.TrimSpace(f.StorageRegion)
-			}
-			s3c, err := storage.NewS3Client(s3cfg)
-			if err != nil {
-				return err
 			}
 			raw, err := storage.GetObject(context.Background(), s3c, s3cfg, strings.TrimSpace(f.StorageKey))
 			if err != nil {
