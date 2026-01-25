@@ -41,7 +41,9 @@ func EncryptEnvBlob(plain []byte) (cipherName string, b64Ciphertext string, size
 
 	ct := gcm.Seal(nil, nonce, plain, nil)
 	out := append(nonce, ct...)
-	return envEncCipher, base64.RawURLEncoding.EncodeToString(out), len(out), nil
+	// Return plaintext size, not ciphertext size, since the push schema validates
+	// against plaintext size limits (1 MiB). The ciphertext includes nonce + GCM tag overhead.
+	return envEncCipher, base64.RawURLEncoding.EncodeToString(out), len(plain), nil
 }
 
 func DecryptEnvBlob(cipherName string, b64Ciphertext string) ([]byte, error) {
