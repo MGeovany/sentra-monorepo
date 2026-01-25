@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -41,4 +42,46 @@ func EncryptEnvBlob(plain []byte) (cipherName string, b64Ciphertext string, size
 	ct := gcm.Seal(nil, nonce, plain, nil)
 	out := append(nonce, ct...)
 	return envEncCipher, base64.RawURLEncoding.EncodeToString(out), len(out), nil
+}
+
+func DecryptEnvBlob(cipherName string, b64Ciphertext string) ([]byte, error) {
+	cipherName = strings.TrimSpace(cipherName)
+	if cipherName == "" {
+		cipherName = envEncCipher
+	}
+	if cipherName != envEncCipher {
+		return nil, fmt.Errorf("unsupported cipher: %s", cipherName)
+	}
+
+	key, err := getOrCreateSessionKey()
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid encryption key length")
+	}
+
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(b64Ciphertext))
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) < gcm.NonceSize() {
+		return nil, fmt.Errorf("invalid ciphertext")
+	}
+	nonce := raw[:gcm.NonceSize()]
+	ct := raw[gcm.NonceSize():]
+	pt, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return nil, err
+	}
+	return pt, nil
 }
