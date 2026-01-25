@@ -118,6 +118,9 @@ func runPush() error {
 				return err
 			}
 
+			// Stable per (user, project.root, commit.client_id) so retries can be cheap.
+			idemKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte("push:"+userID+":"+strings.TrimSpace(reqBody.Project.Root)+":"+strings.TrimSpace(reqBody.Commit.ClientID))).String()
+
 			// Retry on 429 using Retry-After.
 			for attempt := 0; attempt < 5; attempt++ {
 				hreq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(b))
@@ -127,6 +130,7 @@ func runPush() error {
 				hreq.Header.Set("Content-Type", "application/json")
 				hreq.Header.Set("Accept", "application/json")
 				hreq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(sess.AccessToken))
+				hreq.Header.Set("X-Idempotency-Key", idemKey)
 
 				ts := fmt.Sprintf("%d", time.Now().UTC().Unix())
 				nonce := uuid.NewString()
