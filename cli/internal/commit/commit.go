@@ -107,6 +107,18 @@ func List() ([]Commit, error) {
 		if c.Version == 0 {
 			c.Version = 1
 		}
+		// Migrate legacy timestamp-based IDs to UUIDs (one-time migration).
+		if _, err := uuid.Parse(c.ID); err != nil {
+			oldID := c.ID
+			c.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(c.ID)).String()
+			// Save migrated commit with new UUID-based ID.
+			_, _ = Save(c)
+			// Remove old file if it exists and has different name.
+			oldPath := filepath.Join(dir, oldID+".json")
+			if oldPath != filepath.Join(dir, c.ID+".json") {
+				_ = os.Remove(oldPath)
+			}
+		}
 		commits = append(commits, c)
 	}
 
