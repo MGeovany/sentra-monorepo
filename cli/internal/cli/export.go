@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,15 +16,21 @@ import (
 	"time"
 
 	"github.com/mgeovany/sentra/cli/internal/auth"
+	"github.com/mgeovany/sentra/cli/internal/storage"
 )
 
 type remoteExportFile struct {
-	CommitID string `json:"commit_id"`
-	Path     string `json:"file_path"`
-	SHA256   string `json:"sha256"`
-	Size     int    `json:"size"`
-	Cipher   string `json:"cipher"`
-	BlobB64  string `json:"blob_b64"`
+	CommitID        string `json:"commit_id"`
+	Path            string `json:"file_path"`
+	SHA256          string `json:"sha256"`
+	Size            int    `json:"size"`
+	Cipher          string `json:"cipher"`
+	BlobB64         string `json:"blob_b64"`
+	StorageProvider string `json:"storage_provider"`
+	StorageBucket   string `json:"storage_bucket"`
+	StorageKey      string `json:"storage_key"`
+	StorageEndpoint string `json:"storage_endpoint"`
+	StorageRegion   string `json:"storage_region"`
 }
 
 func runExport(args []string) error {
@@ -93,7 +100,40 @@ func runExport(args []string) error {
 
 	written := 0
 	for _, f := range files {
-		plain, err := auth.DecryptEnvBlob(strings.TrimSpace(f.Cipher), strings.TrimSpace(f.BlobB64))
+		cipherName := strings.TrimSpace(f.Cipher)
+		blobB64 := strings.TrimSpace(f.BlobB64)
+		if blobB64 == "" && strings.TrimSpace(f.StorageKey) != "" {
+			s3cfg, _, enabled, err := storage.ResolveS3()
+			if err != nil {
+				return err
+			}
+			if !enabled {
+				return fmt.Errorf("export requires storage setup (run: sentra storage setup)")
+			}
+			// Prefer server-provided location if present.
+			if strings.TrimSpace(f.StorageBucket) != "" {
+				s3cfg.Bucket = strings.TrimSpace(f.StorageBucket)
+			}
+			if strings.TrimSpace(f.StorageEndpoint) != "" {
+				s3cfg.Endpoint = strings.TrimSpace(f.StorageEndpoint)
+			}
+			if strings.TrimSpace(f.StorageRegion) != "" {
+				s3cfg.Region = strings.TrimSpace(f.StorageRegion)
+			}
+			// Recreate S3 client after applying server-provided overrides
+			// since MinIO clients are bound to endpoint/region at construction.
+			s3c, err := storage.NewS3Client(s3cfg)
+			if err != nil {
+				return fmt.Errorf("s3 client failed (%s): %w", f.Path, err)
+			}
+			raw, err := storage.GetObject(context.Background(), s3c, s3cfg, strings.TrimSpace(f.StorageKey))
+			if err != nil {
+				return fmt.Errorf("s3 download failed (%s): %w", f.Path, err)
+			}
+			blobB64 = base64.RawURLEncoding.EncodeToString(raw)
+		}
+
+		plain, err := auth.DecryptEnvBlob(cipherName, blobB64)
 		if err != nil {
 			return fmt.Errorf("cannot decrypt %s: %w", f.Path, err)
 		}

@@ -25,10 +25,19 @@ type pushCommitV1 struct {
 }
 
 type pushFileV1 struct {
-	Path      string `json:"path"`
-	SHA256    string `json:"sha256"`
-	Size      int    `json:"size"`
-	Encrypted bool   `json:"encrypted"`
-	Cipher    string `json:"cipher"`
-	Blob      string `json:"blob"`
+	Path      string         `json:"path"`
+	SHA256    string         `json:"sha256"`
+	Size      int            `json:"size"`
+	Encrypted bool           `json:"encrypted"`
+	Cipher    string         `json:"cipher"`
+	Blob      string         `json:"blob,omitempty"`
+	Storage   *pushStorageV1 `json:"storage,omitempty"`
+}
+
+type pushStorageV1 struct {
+	Provider string `json:"provider"`
+	Bucket   string `json:"bucket"`
+	Key      string `json:"key"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Region   string `json:"region,omitempty"`
 }

@@ -41,3 +41,15 @@ who:
 projects:
 	go run ./cmd/sentra projects
 
+# ARGS
+storage-setup:
+	go run ./cmd/sentra storage $(ARGS)
+
+storage-status:
+	go run ./cmd/sentra storage status
+
+storage-test:
+	go run ./cmd/sentra storage test
+
+storage-reset:
+	go run ./cmd/sentra storage reset

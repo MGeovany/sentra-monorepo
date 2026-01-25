@@ -22,6 +22,8 @@ func Execute(args []string) error {
 			return errors.New("sentra login does not accept flags/args yet")
 		}
 		return runLogin()
+	case "storage":
+		return runStorage(args[1:])
 	case "export":
 		return runExport(args[1:])
 	case "files":
@@ -69,7 +71,7 @@ func Execute(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sentra login | sentra projects | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra add | sentra status | sentra commit | sentra log | sentra push")
+	return errors.New("usage: sentra login | sentra storage setup|status|test|reset | sentra projects | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra add | sentra status | sentra commit | sentra log | sentra push")
 }
 
 func runScan() error {

@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,9 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/mgeovany/sentra/cli/internal/auth"
 	"github.com/mgeovany/sentra/cli/internal/commit"
+	"github.com/mgeovany/sentra/cli/internal/storage"
+	"github.com/minio/minio-go/v7"
 )
 
-func buildPushRequestV1(scanRoot, machineID, machineName string, c commit.Commit) ([]pushRequestV1, error) {
+func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName string, c commit.Commit, s3cfg storage.S3Config, s3 *minio.Client, byos bool, userID string) ([]pushRequestV1, error) {
 	pathsByRoot := map[string][]string{}
 	for p := range c.Files {
 		root := projectRootFromPath(p)
@@ -33,8 +39,8 @@ func buildPushRequestV1(scanRoot, machineID, machineName string, c commit.Commit
 
 	clientID := strings.TrimSpace(c.ID)
 	if _, err := uuid.Parse(clientID); err != nil {
-		// Backward-compat: old commits used timestamp-based IDs.
-		// Keep a stable idempotency key derived from the old ID.
+		// Fallback: convert legacy timestamp-based IDs to UUIDs.
+		// Commits should be migrated on load, but this provides safety for edge cases.
 		clientID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(clientID)).String()
 	}
 
@@ -52,9 +58,34 @@ func buildPushRequestV1(scanRoot, machineID, machineName string, c commit.Commit
 			}
 
 			shaPlain := auth.SHA256Hex(plain)
-			cipherName, blob, size, err := auth.EncryptEnvBlob(plain)
+			cipherName, blobB64, size, err := auth.EncryptEnvBlob(plain)
 			if err != nil {
 				return nil, err
+			}
+
+			var blob string
+			var st *pushStorageV1
+			if byos {
+				if s3 == nil {
+					return nil, fmt.Errorf("byos enabled but s3 client is nil")
+				}
+				raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(blobB64))
+				if err != nil {
+					return nil, err
+				}
+				key := s3ObjectKey(userID, root, p, shaPlain)
+				if err := storage.PutObject(ctx, s3, s3cfg, key, raw); err != nil {
+					return nil, fmt.Errorf("s3 upload failed (%s): %w", p, err)
+				}
+				st = &pushStorageV1{
+					Provider: "s3",
+					Bucket:   s3cfg.Bucket,
+					Key:      key,
+					Endpoint: s3cfg.Endpoint,
+					Region:   s3cfg.Region,
+				}
+			} else {
+				blob = blobB64
 			}
 
 			files = append(files, pushFileV1{
@@ -64,6 +95,7 @@ func buildPushRequestV1(scanRoot, machineID, machineName string, c commit.Commit
 				Encrypted: true,
 				Cipher:    cipherName,
 				Blob:      blob,
+				Storage:   st,
 			})
 		}
 
@@ -80,6 +112,19 @@ func buildPushRequestV1(scanRoot, machineID, machineName string, c commit.Commit
 	}
 
 	return out, nil
+}
+
+func s3ObjectKey(userID string, root string, path string, shaPlain string) string {
+	userID = strings.TrimSpace(userID)
+	root = strings.TrimSpace(root)
+	path = strings.TrimSpace(path)
+	shaPlain = strings.TrimSpace(shaPlain)
+
+	h := sha256.Sum256([]byte(path))
+	pathHash := hex.EncodeToString(h[:])
+
+	// Stable + safe key; content remains encrypted client-side.
+	return "sentra/v1/" + userID + "/" + root + "/" + shaPlain + "/" + pathHash + ".bin"
 }
 
 func projectRootFromPath(p string) string {
