@@ -2,17 +2,24 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/mgeovany/sentra/server/internal/auth"
 	"github.com/mgeovany/sentra/server/internal/repo"
+	"github.com/mgeovany/sentra/server/internal/validate"
 )
 
-func pushHandler(store repo.PushStore) http.Handler {
+func pushHandler(store repo.PushStore, idem repo.IdempotencyStore) http.Handler {
 	if store == nil {
 		store = repo.DisabledPushStore{}
+	}
+	if idem == nil {
+		idem = repo.DisabledIdempotencyStore{}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -37,7 +44,7 @@ func pushHandler(store repo.PushStore) http.Handler {
 			// Keep response minimal, but log the reason for debugging.
 			// Never log secrets: payload is expected to be encrypted blobs.
 			// (Still avoid printing the full body.)
-			log.Printf("push payload rejected err=%v", err)
+			log.Printf("push payload rejected err=%q", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, "invalid push payload")
 			return
@@ -50,6 +57,40 @@ func pushHandler(store repo.PushStore) http.Handler {
 			return
 		}
 
+		idemKey := strings.TrimSpace(r.Header.Get("X-Idempotency-Key"))
+		const idemScope = "push"
+		if idemKey != "" {
+			if validate.IdempotencyKey(idemKey) != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, "invalid idempotency key")
+				return
+			}
+
+			created, err := idem.Create(r.Context(), user.ID, idemScope, idemKey, 24*time.Hour)
+			if err != nil {
+				// Fail open if idempotency storage is not configured.
+				if errors.Is(err, repo.ErrDBNotConfigured) {
+					created = true
+				} else {
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = io.WriteString(w, "idempotency failed")
+					return
+				}
+			}
+			if !created {
+				rec, found, getErr := idem.Get(r.Context(), user.ID, idemScope, idemKey)
+				if getErr == nil && found && rec.Status == repo.IdempotencyDone && len(rec.ResponseJSON) > 0 {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write(rec.ResponseJSON)
+					return
+				}
+				w.WriteHeader(http.StatusConflict)
+				_, _ = io.WriteString(w, "idempotency key already used")
+				return
+			}
+		}
+
 		// Decode the already-validated payload so we can pass it to the DB RPC.
 		var payload any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -59,7 +100,10 @@ func pushHandler(store repo.PushStore) http.Handler {
 
 		res, err := store.Push(r.Context(), user.ID, payload)
 		if err != nil {
-			log.Printf("push store failed user_id=%s err=%v", user.ID, err)
+			log.Printf("push store failed user_id=%q err=%q", user.ID, err.Error())
+			if idemKey != "" {
+				_ = idem.Delete(r.Context(), user.ID, idemScope, idemKey)
+			}
 			switch err {
 			case repo.ErrDBNotConfigured:
 				writeHTTPError(w, http.StatusServiceUnavailable, "db not configured", err)
@@ -67,6 +111,10 @@ func pushHandler(store repo.PushStore) http.Handler {
 				writeHTTPError(w, http.StatusInternalServerError, "push failed", err)
 			}
 			return
+		}
+
+		if idemKey != "" {
+			_ = idem.SetDone(r.Context(), user.ID, idemScope, idemKey, res)
 		}
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

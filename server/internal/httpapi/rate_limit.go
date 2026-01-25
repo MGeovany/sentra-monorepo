@@ -64,6 +64,38 @@ func (b *tokenBuckets) take(key string, now time.Time, ratePerSec, burst float64
 
 var pushBuckets tokenBuckets
 
+var machineRegisterBuckets tokenBuckets
+
+func requireMachineRegisterRateLimit(next http.Handler) http.Handler {
+	if next == nil {
+		next = http.NotFoundHandler()
+	}
+
+	// Registration should be rare; keep tight to reduce abuse.
+	rpm := int64(30)
+	burst := float64(10)
+	ratePerSec := float64(rpm) / 60.0
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok || strings.TrimSpace(user.ID) == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		allowed, retryAfter := machineRegisterBuckets.take(user.ID, time.Now().UTC(), ratePerSec, burst)
+		if !allowed {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte("rate limit exceeded; retry later"))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func requirePushRateLimit(next http.Handler) http.Handler {
 	if next == nil {
 		next = http.NotFoundHandler()

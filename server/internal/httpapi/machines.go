@@ -10,6 +10,7 @@ import (
 
 	"github.com/mgeovany/sentra/server/internal/auth"
 	"github.com/mgeovany/sentra/server/internal/repo"
+	"github.com/mgeovany/sentra/server/internal/validate"
 )
 
 type registerMachineRequest struct {
@@ -54,7 +55,7 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 		req.MachineName = strings.TrimSpace(req.MachineName)
 		req.DevicePubKey = strings.TrimSpace(req.DevicePubKey)
 		req.DeviceKeyType = strings.TrimSpace(req.DeviceKeyType)
-		if req.MachineID == "" || req.MachineName == "" || req.DevicePubKey == "" {
+		if validate.MachineID(req.MachineID) != nil || validate.MachineName(req.MachineName) != nil || validate.DevicePubKeyB64(req.DevicePubKey) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -98,7 +99,7 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 		// If already registered, do not allow changing the stored device key.
 		existing, ok, err := store.DevicePubKey(r.Context(), user.ID, req.MachineID)
 		if err != nil {
-			log.Printf("machines/register device key lookup failed user_id=%s machine_id=%s err=%v", user.ID, req.MachineID, err)
+			log.Printf("machines/register device key lookup failed user_id=%q machine_id=%q err=%v", user.ID, req.MachineID, err)
 			switch err {
 			case repo.ErrDBNotConfigured:
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -118,11 +119,15 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 		err = store.Register(r.Context(), user.ID, req.MachineID, req.MachineName, req.DevicePubKey)
 		if err != nil {
 			// Server-side logging for debugging/observability.
-			log.Printf("machines/register failed user_id=%s machine_id=%s machine_name=%s err=%v", user.ID, req.MachineID, req.MachineName, err)
+			log.Printf("machines/register failed user_id=%q machine_id=%q machine_name=%q err=%v", user.ID, req.MachineID, req.MachineName, err)
 			switch err {
 			case repo.ErrDBNotConfigured:
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = io.WriteString(w, "db not configured")
+			case repo.ErrTooManyMachines:
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = io.WriteString(w, "too many machines")
 			default:
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = io.WriteString(w, "machine register failed")

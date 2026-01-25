@@ -15,6 +15,7 @@ import (
 
 var (
 	ErrDBNotConfigured = errors.New("db not configured")
+	ErrTooManyMachines = errors.New("too many machines")
 )
 
 type MachineStore interface {
@@ -83,6 +84,20 @@ func (s SupabaseMachineStore) Register(ctx context.Context, userID, machineID, m
 	// configuration and Prefer headers.
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
+	}
+
+	// Map known DB-enforced limits to typed errors.
+	var apiErr struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &apiErr); err == nil {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(apiErr.Message)), "too many machines") {
+			return ErrTooManyMachines
+		}
+		if strings.TrimSpace(apiErr.Code) == "P0001" && strings.Contains(strings.ToLower(apiErr.Message), "too many machines") {
+			return ErrTooManyMachines
+		}
 	}
 
 	return fmt.Errorf("supabase upsert machines failed: status=%d body=%s", resp.StatusCode, string(body))

@@ -12,6 +12,7 @@ import (
 type Deps struct {
 	Auth     auth.Middleware
 	Machines repo.MachineStore
+	Idem     repo.IdempotencyStore
 	Projects repo.ProjectStore
 	Commits  repo.CommitStore
 	Files    repo.FileStore
@@ -38,8 +39,8 @@ func New(deps Deps) http.Handler {
 	mux.Handle("/commits", requireLoopback(deps.Auth.Require(commitsHandler(deps.Commits))))
 	mux.Handle("/files", requireLoopback(deps.Auth.Require(filesHandler(deps.Files))))
 	mux.Handle("/export", requireLoopback(deps.Auth.Require(exportHandler(deps.Export))))
-	mux.Handle("/machines/register", requireLoopback(deps.Auth.Require(registerMachineHandler(deps.Machines))))
-	mux.Handle("/push", requireLoopback(deps.Auth.Require(requirePushRateLimit(requireDeviceSignature(deps.Machines, pushHandler(deps.Push))))))
+	mux.Handle("/machines/register", requireLoopback(deps.Auth.Require(requireMachineRegisterRateLimit(registerMachineHandler(deps.Machines)))))
+	mux.Handle("/push", requireLoopback(deps.Auth.Require(requirePushRateLimit(requireDeviceSignature(deps.Machines, pushHandler(deps.Push, deps.Idem))))))
 
 	return mux
 }

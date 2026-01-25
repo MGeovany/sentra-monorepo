@@ -11,6 +11,7 @@ import (
 
 	"github.com/mgeovany/sentra/server/internal/auth"
 	"github.com/mgeovany/sentra/server/internal/repo"
+	"github.com/mgeovany/sentra/server/internal/validate"
 )
 
 type ctxKeySignedBody struct{}
@@ -69,6 +70,11 @@ func requireDeviceSignature(store repo.MachineStore, next http.Handler) http.Han
 		sig := strings.TrimSpace(r.Header.Get("X-Sentra-Signature"))
 		nonce := strings.TrimSpace(r.Header.Get("X-Sentra-Nonce"))
 		if machineID == "" || ts == "" || sig == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, "unauthorized")
+			return
+		}
+		if validate.MachineID(machineID) != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, "unauthorized")
 			return
