@@ -40,3 +40,4 @@ who:
 
 projects:
 	go run ./cmd/sentra projects
+

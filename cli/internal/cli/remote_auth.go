@@ -30,14 +30,6 @@ func ensureRemoteSession() (auth.Session, error) {
 		if claims, parseErr := auth.ParseAccessTokenClaims(s.AccessToken); parseErr == nil {
 			_ = auth.SetUserID(claims.Sub)
 		}
-
-		// Ensure this machine is registered before remote operations.
-		regCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := registerMachine(regCtx, s.AccessToken); err != nil {
-			return auth.Session{}, fmt.Errorf("could not register user/machine with remote: %w", err)
-		}
-
 		return s, nil
 	}
 

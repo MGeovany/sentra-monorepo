@@ -25,6 +25,15 @@ func runPush() error {
 		return err
 	}
 
+	// Ensure this machine is registered before pushing.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := registerMachine(ctx, sess.AccessToken); err != nil {
+			return err
+		}
+	}
+
 	commits, err := commit.List()
 	if err != nil {
 		return err
