@@ -39,7 +39,9 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 
 	clientID := strings.TrimSpace(c.ID)
 	if _, err := uuid.Parse(clientID); err != nil {
-		return nil, fmt.Errorf("invalid commit ID (must be UUID): %w", err)
+		// Fallback: convert legacy timestamp-based IDs to UUIDs.
+		// Commits should be migrated on load, but this provides safety for edge cases.
+		clientID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(clientID)).String()
 	}
 
 	out := make([]pushRequestV1, 0, len(roots))
