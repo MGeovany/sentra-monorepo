@@ -54,8 +54,6 @@ func SaveSession(s Session) error {
 	// Prefer storing the full session in the OS credential store (Keychain/Secret Service/CredMan).
 	// This avoids leaving usable tokens on disk.
 	if err := saveSessionKeyring(s, false); err == nil {
-		// Best-effort cleanup of legacy/on-disk session material.
-		_ = removeLegacySessionFiles()
 		return nil
 	} else if !allowInsecureSessionFile() {
 		return fmt.Errorf("secure session store unavailable (keychain/credential manager): %w", err)
@@ -75,7 +73,6 @@ func saveSession(s Session, preserveSavedAt bool) error {
 	}
 
 	// SavedAt is used as an expiry fallback when the access token has no usable exp.
-	// During migration we preserve an existing SavedAt to avoid widening the refresh window.
 	if !preserveSavedAt || s.SavedAt.IsZero() {
 		s.SavedAt = time.Now().UTC()
 	}
@@ -109,7 +106,7 @@ func LoadSession() (Session, bool, error) {
 		return s, true, nil
 	}
 
-	// 2) Backward-compatible file fallback (optional).
+	// 2) Encrypted file fallback.
 	p, err := sessionPath()
 	if err != nil {
 		return Session{}, false, err
@@ -127,41 +124,20 @@ func LoadSession() (Session, bool, error) {
 	if err != nil {
 		return Session{}, false, fmt.Errorf("cannot decrypt session; please login again: %w", err)
 	}
-	if ok {
-		var sess Session
-		if err := json.Unmarshal(plain, &sess); err != nil {
-			return Session{}, false, fmt.Errorf("invalid session file: %w", err)
-		}
-		if sess.AccessToken == "" {
-			return Session{}, false, nil
-		}
-
-		// Try to migrate into the OS keychain; if that succeeds, remove on-disk material.
-		if err := saveSessionKeyring(sess, true); err == nil {
-			_ = removeLegacySessionFiles()
-		}
-
-		return sess, true, nil
+	if !ok {
+		return Session{}, false, fmt.Errorf("invalid session file format")
 	}
 
-	// Legacy plaintext session.json: load and migrate.
 	var sess Session
-	if err := json.Unmarshal(b, &sess); err != nil {
+	if err := json.Unmarshal(plain, &sess); err != nil {
 		return Session{}, false, fmt.Errorf("invalid session file: %w", err)
 	}
 	if sess.AccessToken == "" {
 		return Session{}, false, nil
 	}
 
-	// Best-effort migration to encrypted format (ignore errors to avoid breaking existing installs).
-	// Preserve the original SavedAt so we don't extend token freshness for legacy sessions
-	// that lack a usable JWT exp claim.
-	_ = saveSession(sess, true)
-
-	// Attempt to migrate into the OS keychain as well.
-	if err := saveSessionKeyring(sess, true); err == nil {
-		_ = removeLegacySessionFiles()
-	}
+	// Try to migrate into the OS keychain.
+	_ = saveSessionKeyring(sess, true)
 
 	return sess, true, nil
 }

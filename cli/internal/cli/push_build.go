@@ -39,9 +39,7 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 
 	clientID := strings.TrimSpace(c.ID)
 	if _, err := uuid.Parse(clientID); err != nil {
-		// Backward-compat: old commits used timestamp-based IDs.
-		// Keep a stable idempotency key derived from the old ID.
-		clientID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(clientID)).String()
+		return nil, fmt.Errorf("invalid commit ID (must be UUID): %w", err)
 	}
 
 	out := make([]pushRequestV1, 0, len(roots))

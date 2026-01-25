@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-
-	"github.com/mgeovany/sentra/cli/internal/scanner"
 )
 
 type State struct {
@@ -34,24 +32,10 @@ func Load(filePath string) (State, bool, error) {
 
 	var s State
 	if err := json.Unmarshal(b, &s); err != nil {
-		// Migrate legacy state format where `projects` was an array.
-		var legacy struct {
-			ScanRoot string            `json:"scanRoot"`
-			Projects []scanner.Project `json:"projects"`
-		}
-		if legacyErr := json.Unmarshal(b, &legacy); legacyErr != nil {
-			return State{}, false, err
-		}
-
-		migrated, migrateErr := FromScan(legacy.ScanRoot, legacy.Projects)
-		if migrateErr != nil {
-			return State{}, false, err
-		}
-		return migrated, true, nil
+		return State{}, false, err
 	}
 
 	if s.Version == 0 {
-		// Back-compat for early versions (if any)
 		s.Version = 1
 	}
 	if s.Projects == nil {
