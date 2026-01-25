@@ -10,12 +10,17 @@ import (
 )
 
 type ExportFile struct {
-	CommitID string `json:"commit_id"`
-	FilePath string `json:"file_path"`
-	SHA256   string `json:"sha256"`
-	Size     int    `json:"size"`
-	Cipher   string `json:"cipher"`
-	BlobB64  string `json:"blob_b64"`
+	CommitID        string `json:"commit_id"`
+	FilePath        string `json:"file_path"`
+	SHA256          string `json:"sha256"`
+	Size            int    `json:"size"`
+	Cipher          string `json:"cipher"`
+	BlobB64         string `json:"blob_b64"`
+	StorageProvider string `json:"storage_provider"`
+	StorageBucket   string `json:"storage_bucket"`
+	StorageKey      string `json:"storage_key"`
+	StorageEndpoint string `json:"storage_endpoint"`
+	StorageRegion   string `json:"storage_region"`
 }
 
 type ExportStore interface {
@@ -35,7 +40,7 @@ type SupabaseExportStore struct {
 
 func NewSupabaseExportStore(client *supabase.Client, fn string) SupabaseExportStore {
 	if fn == "" {
-		fn = "sentra_export_v1"
+		fn = "sentra_export_v2"
 	}
 	return SupabaseExportStore{client: client, fn: fn}
 }

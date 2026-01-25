@@ -17,6 +17,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/mgeovany/sentra/cli/internal/auth"
 	"github.com/mgeovany/sentra/cli/internal/commit"
+	"github.com/mgeovany/sentra/cli/internal/storage"
+	"github.com/minio/minio-go/v7"
 )
 
 func runPush() error {
@@ -84,7 +86,29 @@ func runPush() error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, c := range pending {
-		reqs, err := buildPushRequestV1(scanRoot, machineID, name, c)
+		userID := strings.TrimSpace(cfg.UserID)
+		if userID == "" {
+			if claims, err := auth.ParseAccessTokenClaims(sess.AccessToken); err == nil {
+				userID = strings.TrimSpace(claims.Sub)
+			}
+		}
+		if userID == "" {
+			return fmt.Errorf("missing user id; please run: sentra login")
+		}
+
+		s3cfg, byos, err := storage.LoadS3ConfigFromEnv()
+		if err != nil {
+			return err
+		}
+		var s3c *minio.Client
+		if byos {
+			s3c, err = storage.NewS3Client(s3cfg)
+			if err != nil {
+				return err
+			}
+		}
+
+		reqs, err := buildPushRequestV1(context.Background(), scanRoot, machineID, name, c, s3cfg, s3c, byos, userID)
 		if err != nil {
 			return err
 		}

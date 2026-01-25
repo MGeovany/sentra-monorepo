@@ -62,14 +62,14 @@ func init() {
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "sha256", "size", "encrypted", "cipher", "blob"],
-        "properties": {
-          "path": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
-            "pattern": "^(?:[A-Za-z0-9._-]+/)*\\.env(?:\\.[A-Za-z0-9._-]+)*$"
-          },
+		"required": ["path", "sha256", "size", "encrypted", "cipher"],
+		"properties": {
+		  "path": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 500,
+			"pattern": "^(?:[A-Za-z0-9._-]+/)*\\.env(?:\\.[A-Za-z0-9._-]+)*$"
+		  },
           "sha256": {
             "type": "string",
             "description": "SHA-256 (hex, lowercase) of the plaintext .env contents before encryption. Used for integrity and deduplication; the server cannot verify it without decrypting.",
@@ -77,11 +77,28 @@ func init() {
           },
           "size": {"type": "integer", "minimum": 1, "maximum": 1048576},
           "encrypted": {"type": "boolean", "const": true},
-          "cipher": {"type": "string", "enum": ["ed25519+aes-256-gcm-v1", "age-v1", "sentra-v1"]},
-          "blob": {"type": "string", "minLength": 1, "maxLength": 8000000}
-        }
-      }
-    }
+		  "cipher": {"type": "string", "enum": ["ed25519+aes-256-gcm-v1", "age-v1", "sentra-v1"]},
+		  "blob": {"type": "string", "minLength": 1, "maxLength": 8000000},
+		  "storage": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["provider", "bucket", "key"],
+			"properties": {
+			  "provider": {"type": "string", "enum": ["s3"]},
+			  "bucket": {"type": "string", "minLength": 1, "maxLength": 255},
+			  "key": {"type": "string", "minLength": 1, "maxLength": 1024},
+			  "endpoint": {"type": "string", "minLength": 1, "maxLength": 500},
+			  "region": {"type": "string", "minLength": 1, "maxLength": 100}
+			}
+		  }
+		}
+		,
+		"oneOf": [
+		  {"required": ["blob"]},
+		  {"required": ["storage"]}
+		]
+	  }
+	}
   }
 }`
 
