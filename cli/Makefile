@@ -53,3 +53,6 @@ storage-test:
 
 storage-reset:
 	go run ./cmd/sentra storage reset
+	
+doctor:
+	go run ./cmd/sentra doctor
