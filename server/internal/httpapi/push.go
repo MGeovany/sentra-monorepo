@@ -68,26 +68,33 @@ func pushHandler(store repo.PushStore, idem repo.IdempotencyStore) http.Handler 
 
 			created, err := idem.Create(r.Context(), user.ID, idemScope, idemKey, 24*time.Hour)
 			if err != nil {
-				// Fail open if idempotency storage is not configured.
-				if errors.Is(err, repo.ErrDBNotConfigured) {
-					created = true
-				} else {
-					w.WriteHeader(http.StatusInternalServerError)
-					_, _ = io.WriteString(w, "idempotency failed")
-					return
+				// Fail open if idempotency storage is not configured or misbehaving.
+				// Idempotency is an optimization; the push RPC must still be safe to retry.
+				if !errors.Is(err, repo.ErrDBNotConfigured) {
+					log.Printf("idempotency create failed user_id=%q key=%q err=%q", user.ID, idemKey, err.Error())
 				}
+				created = true
 			}
 			if !created {
 				rec, found, getErr := idem.Get(r.Context(), user.ID, idemScope, idemKey)
-				if getErr == nil && found && rec.Status == repo.IdempotencyDone && len(rec.ResponseJSON) > 0 {
-					w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write(rec.ResponseJSON)
+				if getErr != nil {
+					// Fail open if storage is broken.
+					log.Printf("idempotency get failed user_id=%q key=%q err=%q", user.ID, idemKey, getErr.Error())
+					created = true
+				}
+				if created {
+					// Continue; we couldn't reliably enforce idempotency.
+				} else {
+					if getErr == nil && found && rec.Status == repo.IdempotencyDone && len(rec.ResponseJSON) > 0 {
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write(rec.ResponseJSON)
+						return
+					}
+					w.WriteHeader(http.StatusConflict)
+					_, _ = io.WriteString(w, "idempotency key already used")
 					return
 				}
-				w.WriteHeader(http.StatusConflict)
-				_, _ = io.WriteString(w, "idempotency key already used")
-				return
 			}
 		}
 
