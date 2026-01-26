@@ -51,6 +51,14 @@ Usage:
 
 - `sentra sync`
 
+### `sentra history`
+
+Lists remote commit history across all projects.
+
+Usage:
+
+- `sentra history`
+
 ### `sentra wipe`
 
 Deletes ALL local Sentra state (logout + local commits + configs) and clears relevant keychain entries.

@@ -34,6 +34,8 @@ func Execute(args []string) error {
 			return errors.New("sentra projects does not accept flags/args yet")
 		}
 		return runProjects()
+	case "history":
+		return runHistory(args[1:])
 	case "who":
 		if len(args) > 1 {
 			return errors.New("sentra who does not accept flags/args yet")
@@ -76,7 +78,7 @@ func Execute(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sentra login | sentra storage setup|status|test|reset | sentra projects | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra add | sentra status | sentra commit | sentra sync | sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify] | sentra push | sentra wipe | sentra doctor")
+	return errors.New("usage: sentra login | sentra storage setup|status|test|reset | sentra projects | sentra history | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra add | sentra status | sentra commit | sentra sync | sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify] | sentra push | sentra wipe | sentra doctor")
 }
 
 func runScan() error {

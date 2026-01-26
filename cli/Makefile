@@ -59,3 +59,6 @@ doctor:
 
 wipe:
 	go run ./cmd/sentra wipe
+
+history:
+	go run ./cmd/sentra history
