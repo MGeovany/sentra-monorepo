@@ -57,6 +57,13 @@ Usage:
 
 - `sentra log`
 
+Manage local commits:
+
+- `sentra log rm <id>`
+- `sentra log clear`
+- `sentra log prune <id|all>`
+- `sentra log verify`
+
 ### `sentra push`
 
 Pushes local commits to the remote.

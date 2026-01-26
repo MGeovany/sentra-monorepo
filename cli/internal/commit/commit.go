@@ -2,6 +2,8 @@ package commit
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -129,4 +131,56 @@ func List() ([]Commit, error) {
 func Update(c Commit) error {
 	_, err := Save(c)
 	return err
+}
+
+func Delete(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("commit id is required")
+	}
+	dir, err := Dir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, id+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("commit not found: %s", id)
+		}
+		return err
+	}
+	return nil
+}
+
+func Clear() (int, error) {
+	dir, err := Dir()
+	if err != nil {
+		return 0, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	deleted := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return deleted, err
+		}
+		deleted++
+	}
+
+	return deleted, nil
 }

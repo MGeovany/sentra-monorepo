@@ -54,6 +54,9 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 			abs := filepath.Join(scanRoot, filepath.FromSlash(p))
 			plain, err := os.ReadFile(abs)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return nil, fmt.Errorf("cannot read %s: file not found at %s (commit=%s). Fix: restore the file, or run: sentra log prune %s (or sentra log rm %s)", p, abs, strings.TrimSpace(c.ID), strings.TrimSpace(c.ID), strings.TrimSpace(c.ID))
+				}
 				return nil, fmt.Errorf("cannot read %s: %w", p, err)
 			}
 
