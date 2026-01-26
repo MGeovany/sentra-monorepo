@@ -41,9 +41,8 @@ who:
 projects:
 	go run ./cmd/sentra projects
 
-# ARGS
 storage-setup:
-	go run ./cmd/sentra storage $(ARGS)
+	go run ./cmd/sentra storage setup
 
 storage-status:
 	go run ./cmd/sentra storage status
@@ -56,3 +55,12 @@ storage-reset:
 	
 doctor:
 	go run ./cmd/sentra doctor
+
+wipe:
+	go run ./cmd/sentra wipe
+
+history:
+	go run ./cmd/sentra history
+
+overview:
+	go run ./cmd/sentra overview

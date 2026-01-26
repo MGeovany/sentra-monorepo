@@ -34,9 +34,16 @@ type remoteExportFile struct {
 }
 
 func runExport(args []string) error {
+	verbosef("Starting export operation...")
 	root, at, err := parseExportArgs(args)
 	if err != nil {
 		return err
+	}
+	verbosef("Project root: %s", root)
+	if at != "" {
+		verbosef("Exporting at commit: %s", at)
+	} else {
+		verbosef("Exporting latest commit")
 	}
 
 	sess, err := ensureRemoteSession()
@@ -46,11 +53,13 @@ func runExport(args []string) error {
 	if strings.TrimSpace(sess.AccessToken) == "" {
 		return errors.New("not logged in (run: sentra login)")
 	}
+	verbosef("Session loaded: user authenticated")
 
 	serverURL, err := serverURLFromEnv()
 	if err != nil {
 		return err
 	}
+	verbosef("Server URL: %s", serverURL)
 
 	u, err := url.Parse(serverURL + "/export")
 	if err != nil {
@@ -62,6 +71,7 @@ func runExport(args []string) error {
 		q.Set("at", at)
 	}
 	u.RawQuery = q.Encode()
+	verbosef("Export URL: %s", u.String())
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -88,21 +98,26 @@ func runExport(args []string) error {
 	}
 	if len(files) == 0 {
 		fmt.Println("✔ 0 files")
+		verbosef("No files found to export")
 		return nil
 	}
+	verbosef("Received %d file(s) from server", len(files))
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 
 	baseDir := filepath.Join("sentra-export", root)
+	verbosef("Export directory: %s", baseDir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return err
 	}
 
 	written := 0
-	for _, f := range files {
+	for i, f := range files {
+		verbosef("Processing file %d/%d: %s (size: %d bytes, cipher: %s)", i+1, len(files), f.Path, f.Size, f.Cipher)
 		cipherName := strings.TrimSpace(f.Cipher)
 		blobB64 := strings.TrimSpace(f.BlobB64)
 		if blobB64 == "" && strings.TrimSpace(f.StorageKey) != "" {
+			verbosef("File stored in BYOS, downloading from storage: %s", f.StorageKey)
 			s3cfg, _, enabled, err := storage.ResolveS3()
 			if err != nil {
 				return err
@@ -113,12 +128,15 @@ func runExport(args []string) error {
 			// Prefer server-provided location if present.
 			if strings.TrimSpace(f.StorageBucket) != "" {
 				s3cfg.Bucket = strings.TrimSpace(f.StorageBucket)
+				verbosef("Using storage bucket: %s", s3cfg.Bucket)
 			}
 			if strings.TrimSpace(f.StorageEndpoint) != "" {
 				s3cfg.Endpoint = strings.TrimSpace(f.StorageEndpoint)
+				verbosef("Using storage endpoint: %s", s3cfg.Endpoint)
 			}
 			if strings.TrimSpace(f.StorageRegion) != "" {
 				s3cfg.Region = strings.TrimSpace(f.StorageRegion)
+				verbosef("Using storage region: %s", s3cfg.Region)
 			}
 			// Recreate S3 client after applying server-provided overrides
 			// since MinIO clients are bound to endpoint/region at construction.
@@ -126,17 +144,21 @@ func runExport(args []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to connect to storage (%s)", f.Path)
 			}
+			verbosef("Downloading from storage: %s", f.StorageKey)
 			raw, err := storage.GetObject(context.Background(), s3c, s3cfg, strings.TrimSpace(f.StorageKey))
 			if err != nil {
 				return fmt.Errorf("failed to download from storage (%s)", f.Path)
 			}
+			verbosef("Downloaded %d bytes from storage", len(raw))
 			blobB64 = base64.RawURLEncoding.EncodeToString(raw)
 		}
 
+		verbosef("Decrypting file: %s", f.Path)
 		plain, err := auth.DecryptEnvBlob(cipherName, blobB64)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt file (%s)", f.Path)
 		}
+		verbosef("Decrypted file: %s (%d bytes)", f.Path, len(plain))
 
 		rel := strings.TrimSpace(f.Path)
 		rel = strings.TrimPrefix(rel, root+"/")
@@ -152,6 +174,7 @@ func runExport(args []string) error {
 		}
 
 		outPath := filepath.Join(baseDir, filepath.FromSlash(rel))
+		verbosef("Writing file to: %s", outPath)
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 			return err
 		}
@@ -159,9 +182,11 @@ func runExport(args []string) error {
 			return err
 		}
 		written++
+		verbosef("Successfully exported file: %s", outPath)
 	}
 
 	fmt.Printf("✔ exported %d files to %s\n", written, baseDir)
+	verbosef("Export completed: %d file(s) written to %s", written, baseDir)
 	return nil
 }
 

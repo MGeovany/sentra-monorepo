@@ -17,10 +17,25 @@ import (
 
 func runLog(args []string) error {
 	if len(args) == 0 {
-		return runLogList()
+		return runLogList("pending")
 	}
 
 	switch strings.TrimSpace(args[0]) {
+	case "all":
+		if len(args) != 1 {
+			return errors.New("usage: sentra log all")
+		}
+		return runLogList("all")
+	case "pending":
+		if len(args) != 1 {
+			return errors.New("usage: sentra log pending")
+		}
+		return runLogList("pending")
+	case "pushed":
+		if len(args) != 1 {
+			return errors.New("usage: sentra log pushed")
+		}
+		return runLogList("pushed")
 	case "rm", "delete":
 		if len(args) != 2 {
 			return errors.New("usage: sentra log rm <id>")
@@ -42,40 +57,80 @@ func runLog(args []string) error {
 		}
 		return runLogVerify()
 	default:
-		return errors.New("usage: sentra log [rm <id>|clear|prune <id|all>|verify]")
+		return errors.New("usage: sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify]")
 	}
 }
 
-func runLogList() error {
+func runLogList(mode string) error {
 	commits, err := commit.List()
 	if err != nil {
 		return err
 	}
 
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		mode = "pending"
+	}
+
 	if len(commits) == 0 {
+		if mode == "pending" {
+			fmt.Println("✔ 0 pending commits")
+			return nil
+		}
 		fmt.Println("no commits")
 		return nil
 	}
 
+	var filtered []commit.Commit
+	for _, c := range commits {
+		pushed := strings.TrimSpace(c.PushedAt) != ""
+		switch mode {
+		case "all":
+			filtered = append(filtered, c)
+		case "pushed":
+			if pushed {
+				filtered = append(filtered, c)
+			}
+		default: // pending
+			if !pushed {
+				filtered = append(filtered, c)
+			}
+		}
+	}
+
+	if len(filtered) == 0 {
+		switch mode {
+		case "pushed":
+			fmt.Println("✔ 0 pushed commits")
+		default:
+			fmt.Println("✔ 0 pending commits")
+		}
+		return nil
+	}
+
+	if mode == "pending" {
+		fmt.Printf("✔ %d pending commit(s)\n\n", len(filtered))
+	}
+
 	// newest first
-	for i := len(commits) - 1; i >= 0; i-- {
-		c := commits[i]
-		fmt.Printf("commit %s (%s)\n", shortCommitID(c), c.ID)
+	for i := len(filtered) - 1; i >= 0; i-- {
+		cm := filtered[i]
+		fmt.Println(c(ansiCyan, "commit ") + c(ansiBoldCyan, shortCommitID(cm)) + c(ansiDim, " ("+cm.ID+")"))
 
-		date := formatCommitDate(c.CreatedAt)
+		date := formatCommitDate(cm.CreatedAt)
 		if date != "" {
-			fmt.Printf("Date: %s\n", date)
+			fmt.Println(c(ansiDim, "Date: ") + date)
 		}
-		if strings.TrimSpace(c.PushedAt) != "" {
-			fmt.Printf("Pushed: %s\n", strings.TrimSpace(c.PushedAt))
+		if strings.TrimSpace(cm.PushedAt) != "" {
+			fmt.Println(c(ansiDim, "Pushed: ") + strings.TrimSpace(cm.PushedAt))
 		}
-		fmt.Printf("Files: %d\n", len(c.Files))
+		fmt.Println(c(ansiDim, "Files: ") + c(ansiBoldCyan, fmt.Sprintf("%d", len(cm.Files))))
 
-		msg := strings.TrimSpace(c.Message)
+		msg := strings.TrimSpace(cm.Message)
 		if msg == "" {
 			msg = "(no message)"
 		}
-		fmt.Println("Message:")
+		fmt.Println(c(ansiDim, "Message:"))
 		fmt.Printf("  %s\n", msg)
 		if i != 0 {
 			fmt.Println()

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,10 +82,21 @@ func runLogin() error {
 		return err
 	}
 
-	fmt.Println("Please open this link to login:")
-	fmt.Println(authURL)
 	fmt.Println()
-	fmt.Println("Waiting for browser callback...")
+	fmt.Println(c(ansiBoldCyan, "Login"))
+	fmt.Println()
+
+	// Try to open browser automatically
+	if err := openBrowser(authURL); err == nil {
+		fmt.Println(c(ansiDim, "Opening your browser..."))
+	} else {
+		fmt.Println(c(ansiDim, "Please open this link in your browser:"))
+		fmt.Println()
+		fmt.Println(c(ansiCyan, authURL))
+	}
+	fmt.Println()
+
+	sp := startSpinner("Waiting for authentication...")
 
 	codeCh := make(chan string, 1)
 	errCh := make(chan error, 1)
@@ -97,8 +110,8 @@ func runLogin() error {
 		// Hardening: validate a CLI-generated nonce embedded in redirect_to.
 		if got := q.Get("sentra_state"); got == "" || got != nonce {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte("Login failed: invalid callback state.\n"))
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(loginErrorHTML("Login failed", "Invalid callback state. Please try again.")))
 			select {
 			case errCh <- errors.New("invalid callback state"):
 			default:
@@ -111,8 +124,8 @@ func runLogin() error {
 		cbOnce.Do(func() { handled = true })
 		if !handled {
 			w.WriteHeader(http.StatusConflict)
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte("Callback already handled. You can close this tab."))
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(loginSuccessHTML()))
 			return
 		}
 
@@ -123,18 +136,20 @@ func runLogin() error {
 			errName := q.Get("error")
 			errCode := q.Get("error_code")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			errorMsg := "Authentication incomplete"
+			if errDesc != "" {
+				errorMsg = errDesc
+			} else if errName != "" {
+				errorMsg = errName
+			}
+			_, _ = w.Write([]byte(loginErrorHTML("Login failed", errorMsg)))
 			if errDesc != "" || errName != "" || errCode != "" {
-				_, _ = fmt.Fprintf(w,
-					"Login failed.\n\nAuthentication error: %s\n\nPlease try again or contact support if the problem persists.\n",
-					errDesc,
-				)
 				select {
 				case errCh <- fmt.Errorf("oauth error: %s (%s) %s", errName, errCode, errDesc):
 				default:
 				}
 			} else {
-				_, _ = w.Write([]byte("Login failed: authentication incomplete.\n"))
 				select {
 				case errCh <- errors.New("authentication incomplete"):
 				default:
@@ -144,8 +159,8 @@ func runLogin() error {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("Login successful. You can close this tab and return to the CLI."))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(loginSuccessHTML()))
 		select {
 		case codeCh <- code:
 		default:
@@ -172,10 +187,13 @@ func runLogin() error {
 	var authCode string
 	select {
 	case authCode = <-codeCh:
+		sp.StopSuccess("✔ Authentication successful")
 	case err := <-errCh:
+		sp.StopInfo("")
 		_ = srv.Shutdown(context.Background())
 		return err
 	case <-ctx.Done():
+		sp.StopInfo("")
 		_ = srv.Shutdown(context.Background())
 		return errors.New("login timed out")
 	}
@@ -257,7 +275,7 @@ func runLogin() error {
 	// Storage choice: hosted provider vs BYOS (S3-compatible).
 	{
 		r := bufio.NewReader(os.Stdin)
-		fmt.Println("Choose storage mode for encrypted .env blobs:")
+		fmt.Println(c(ansiBoldCyan, "Choose storage mode for encrypted .env blobs"))
 		choice, err := promptSelect(r, []string{
 			"Use Sentra storage (recommended)",
 			"Use my storage (AWS S3 / Cloudflare R2 / MinIO / custom S3)",
@@ -316,6 +334,142 @@ func runLogin() error {
 		}
 	}
 
-	fmt.Println("logged in")
+	fmt.Println()
+	successf("✔ Logged in successfully")
 	return nil
+}
+
+func loginSuccessHTML() string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Login Successful</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+			background: white;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			padding: 20px;
+			color: black;
+		}
+		.container {
+			text-align: center;
+			max-width: 480px;
+			width: 100%;
+		}
+		h1 {
+			font-size: 24px;
+			font-weight: 400;
+			margin-bottom: 16px;
+			color: black;
+			letter-spacing: 0.5px;
+		}
+		p {
+			font-size: 14px;
+			line-height: 1.6;
+			color: black;
+			margin-bottom: 12px;
+			font-weight: 300;
+		}
+		.hint {
+			font-size: 12px;
+			color: black;
+			margin-top: 24px;
+			opacity: 0.6;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>Login Successful</h1>
+		<p>You have been authenticated successfully</p>
+		<p class="hint">You can close this tab and return to the CLI</p>
+	</div>
+</body>
+</html>`
+}
+
+func loginErrorHTML(title, message string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>%s</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+			background: white;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			padding: 20px;
+			color: black;
+		}
+		.container {
+			text-align: center;
+			max-width: 480px;
+			width: 100%%;
+		}
+		h1 {
+			font-size: 24px;
+			font-weight: 400;
+			margin-bottom: 16px;
+			color: black;
+			letter-spacing: 0.5px;
+		}
+		p {
+			font-size: 14px;
+			line-height: 1.6;
+			color: black;
+			margin-bottom: 12px;
+			font-weight: 300;
+		}
+		.hint {
+			font-size: 12px;
+			color: black;
+			margin-top: 24px;
+			opacity: 0.6;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>%s</h1>
+		<p>%s</p>
+		<p class="hint">Please try again or contact support if the problem persists</p>
+	</div>
+</body>
+</html>`, title, title, message)
+}
+
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+	return cmd.Run()
 }

@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,18 +16,22 @@ func runAdd(args []string) error {
 		return errors.New("usage: sentra add . | sentra add <path>")
 	}
 
-	homeDir, err := os.UserHomeDir()
+	verbosef("Starting add operation...")
+	// scan root is configurable and persisted in local index
+	scanRoot, err := resolveScanRoot()
 	if err != nil {
 		return err
 	}
-	scanRoot := filepath.Join(homeDir, "dev")
+	verbosef("Scan root: %s", scanRoot)
 
 	projects, err := scanner.Scan(scanRoot)
 	if err != nil {
 		return err
 	}
+	verbosef("Scanned %d project(s)", len(projects))
 
 	available := flattenScan(scanRoot, projects)
+	verbosef("Found %d available env file(s)", len(available))
 
 	indexPath, err := index.DefaultPath()
 	if err != nil {
@@ -47,7 +50,8 @@ func runAdd(args []string) error {
 	switch args[0] {
 	case ".":
 		if len(available) == 0 {
-			fmt.Println("✔ staged 0 env files")
+			fmt.Println(c(ansiGreen, "✔ staged ") + c(ansiBoldCyan, "0") + c(ansiGreen, " env files"))
+			verbosef("No env files found to stage")
 			return nil
 		}
 		paths := make([]string, 0, len(available))
@@ -55,6 +59,10 @@ func runAdd(args []string) error {
 			paths = append(paths, p)
 		}
 		sort.Strings(paths)
+		verbosef("Staging %d file(s):", len(paths))
+		for _, p := range paths {
+			verbosef("  - %s (hash: %s)", p, available[p])
+		}
 
 		for _, p := range paths {
 			idx.Staged[p] = available[p]
@@ -62,7 +70,8 @@ func runAdd(args []string) error {
 		if err := index.Save(indexPath, idx); err != nil {
 			return err
 		}
-		fmt.Printf("✔ staged %d env files\n", len(paths))
+		fmt.Println(c(ansiGreen, "✔ staged ") + c(ansiBoldCyan, fmt.Sprintf("%d", len(paths))) + c(ansiGreen, " env files"))
+		verbosef("Index saved to: %s", indexPath)
 		return nil
 	default:
 		if len(args) != 1 {
@@ -70,21 +79,26 @@ func runAdd(args []string) error {
 		}
 
 		requested := normalizeRelPath(args[0])
+		verbosef("Looking for file: %s", requested)
 		hash, ok := available[requested]
 		if !ok {
 			// allow `./foo/bar` too
 			requested = strings.TrimPrefix(requested, "./")
+			verbosef("Trying without ./ prefix: %s", requested)
 			hash, ok = available[requested]
 			if !ok {
+				verbosef("File not found in available files")
 				return fmt.Errorf("env file not found: %s", args[0])
 			}
 		}
+		verbosef("Found file: %s (hash: %s)", requested, hash)
 
 		idx.Staged[requested] = hash
 		if err := index.Save(indexPath, idx); err != nil {
 			return err
 		}
-		fmt.Printf("✔ staged %s\n", requested)
+		fmt.Println(c(ansiGreen, "✔ staged ") + c(ansiBoldCyan, requested))
+		verbosef("Index saved to: %s", indexPath)
 		return nil
 	}
 }

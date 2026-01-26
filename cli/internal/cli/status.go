@@ -2,25 +2,24 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/mgeovany/sentra/cli/internal/scanner"
 	"github.com/mgeovany/sentra/cli/internal/state"
 )
 
 func runStatus() error {
-	homeDir, err := os.UserHomeDir()
+	verbosef("Checking status...")
+	scanRoot, err := resolveScanRoot()
 	if err != nil {
 		return err
 	}
-
-	scanRoot := filepath.Join(homeDir, "dev")
+	verbosef("Scan root: %s", scanRoot)
 
 	statePath, err := state.DefaultPath()
 	if err != nil {
 		return err
 	}
+	verbosef("State path: %s", statePath)
 
 	prev, ok, err := state.Load(statePath)
 	if err != nil {
@@ -28,21 +27,34 @@ func runStatus() error {
 	}
 	if !ok {
 		prev = state.State{ScanRoot: scanRoot, Projects: map[string]map[string]string{}, Version: 1}
+		verbosef("No previous state found, starting fresh")
+	} else {
+		verbosef("Loaded previous state with %d project(s)", len(prev.Projects))
 	}
 
+	verbosef("Scanning current state...")
 	currentProjects, err := scanner.Scan(scanRoot)
 	if err != nil {
 		return err
 	}
+	verbosef("Found %d current project(s)", len(currentProjects))
 	curr, err := state.FromScan(scanRoot, currentProjects)
 	if err != nil {
 		return err
 	}
+	verbosef("Current state has %d project(s)", len(curr.Projects))
 
 	changed := countChangedEnvFiles(prev, curr)
+	verbosef("Changed files detected: %d", changed)
 
-	fmt.Printf("✔ %d projects tracked\n", len(prev.Projects))
-	fmt.Printf("⚠ %d env changed\n", changed)
+	fmt.Println(c(ansiGreen, "✔ ") + c(ansiBoldCyan, fmt.Sprintf("%d", len(prev.Projects))) + c(ansiGreen, " projects tracked"))
+	if changed == 0 {
+		fmt.Println(c(ansiGreen, "✔ ") + c(ansiBoldCyan, "0") + c(ansiGreen, " env changed"))
+		verbosef("All env files are up to date")
+		return nil
+	}
+	fmt.Println(c(ansiYellow, "⚠ ") + c(ansiBoldCyan, fmt.Sprintf("%d", changed)) + c(ansiYellow, " env changed"))
+	verbosef("Run 'sentra add .' to stage changed files")
 
 	return nil
 }

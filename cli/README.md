@@ -18,7 +18,9 @@ Usage:
 
 ### `sentra scan`
 
-Scans `~/dev` for git repositories and detects `.env*` files.
+Scans a configured root for git repositories and detects `.env*` files.
+
+On first run it prompts you for a scan root (defaults to `~/dev`).
 
 Usage:
 
@@ -41,6 +43,38 @@ Usage:
 
 - `sentra status`
 
+### `sentra overview`
+
+Shows a per-project card view with useful metadata (env count, staged, changed, latest modified).
+
+Usage:
+
+- `sentra overview`
+
+### `sentra sync`
+
+Downloads the latest env files from the remote and writes them into local repos under the configured scan root.
+
+Usage:
+
+- `sentra sync`
+
+### `sentra history`
+
+Lists remote commit history across all projects.
+
+Usage:
+
+- `sentra history`
+
+### `sentra wipe`
+
+Deletes ALL local Sentra state (logout + local commits + configs) and clears relevant keychain entries.
+
+Usage:
+
+- `sentra wipe`
+
 ### `sentra commit`
 
 Creates a local commit from staged env files.
@@ -55,7 +89,9 @@ Shows local commit history.
 
 Usage:
 
-- `sentra log`
+- `sentra log` (pending only)
+- `sentra log all`
+- `sentra log pushed`
 
 Manage local commits:
 

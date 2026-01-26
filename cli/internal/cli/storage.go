@@ -45,30 +45,32 @@ func runStorage(args []string) error {
 }
 
 func runStorageStatus() error {
+	fmt.Println(c(ansiBoldCyan, "Storage"))
+
 	cfg, ok, err := storage.LoadConfig()
 	if err != nil {
 		return err
 	}
 	if ok {
-		fmt.Println("BYOS: active")
-		fmt.Printf("Provider: %s\n", cfg.Provider)
-		fmt.Printf("Bucket: %s\n", cfg.Bucket)
-		fmt.Printf("Endpoint: %s\n", cfg.Endpoint)
+		successf("✔ BYOS: active")
+		fmt.Println(c(ansiDim, "Provider: ") + string(cfg.Provider))
+		fmt.Println(c(ansiDim, "Bucket: ") + cfg.Bucket)
+		fmt.Println(c(ansiDim, "Endpoint: ") + cfg.Endpoint)
 		if strings.TrimSpace(cfg.Region) != "" {
-			fmt.Printf("Region: %s\n", cfg.Region)
+			fmt.Println(c(ansiDim, "Region: ") + cfg.Region)
 		}
-		fmt.Printf("Auth: %s\n", cfg.AuthMethod)
+		fmt.Println(c(ansiDim, "Auth: ") + string(cfg.AuthMethod))
 		switch cfg.AuthMethod {
 		case storage.AuthAWSProfile:
 			p := strings.TrimSpace(cfg.AWSProfile)
 			if p == "" {
 				p = "default"
 			}
-			fmt.Printf("AWS profile: %s\n", p)
+			fmt.Println(c(ansiDim, "AWS profile: ") + p)
 		case storage.AuthStatic:
-			fmt.Printf("Secret storage: %s\n", cfg.SecretLocation)
+			fmt.Println(c(ansiDim, "Secret storage: ") + string(cfg.SecretLocation))
 		case storage.AuthEnvOnly:
-			fmt.Println("Secret storage: env")
+			fmt.Println(c(ansiDim, "Secret storage: ") + "env")
 		}
 		return nil
 	}
@@ -78,13 +80,13 @@ func runStorageStatus() error {
 		return err
 	}
 	if enabled {
-		fmt.Println("BYOS: active (env vars)")
-		fmt.Println("Hint: run `sentra storage setup` to persist config")
+		successf("✔ BYOS: active (env vars)")
+		infof("Hint: run `sentra storage setup` to persist config")
 		return nil
 	}
 
-	fmt.Println("BYOS: disabled")
-	fmt.Println("Run: sentra storage setup")
+	warnf("⚠ BYOS: disabled")
+	fmt.Println(c(ansiCyan, "Run: ") + c(ansiBoldCyan, "sentra storage setup"))
 	return nil
 }
 
@@ -105,15 +107,17 @@ func runStorageTest() error {
 		return errors.New("storage disabled")
 	}
 
-	fmt.Println("Testing connection...")
+	sp := startSpinner("Testing storage connection...")
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	if err := storage.TestS3(ctx, client, cfg); err != nil {
+		sp.StopInfo("")
 		return err
 	}
-	fmt.Println("✔ Connected")
-	fmt.Println("✔ Upload test OK")
-	fmt.Println("✔ Download test OK")
+	sp.StopSuccess("✔ storage test OK")
+	successf("✔ Connected")
+	successf("✔ Upload test OK")
+	successf("✔ Download test OK")
 	return nil
 }
 
@@ -121,14 +125,16 @@ func runStorageReset() error {
 	if err := storage.DeleteConfig(); err != nil {
 		return err
 	}
-	fmt.Println("✔ storage config removed")
+	successf("✔ storage config removed")
+	infof("Hint: run `sentra storage setup` to enable BYOS again")
 	return nil
 }
 
 func runStorageSetup() error {
 	r := bufio.NewReader(os.Stdin)
 
-	fmt.Println("Choose storage provider:")
+	fmt.Println()
+	fmt.Println(c(ansiBoldCyan, "Choose storage provider:"))
 	providerChoice, err := promptSelect(r, []string{
 		"AWS S3",
 		"Cloudflare R2",
@@ -138,6 +144,7 @@ func runStorageSetup() error {
 	if err != nil {
 		return err
 	}
+	fmt.Println() // Blank line after selection
 
 	cfg := storage.Config{Version: 1, UseSSL: true}
 	cfg.ID = uuid.NewString()
@@ -187,7 +194,7 @@ func runStorageSetup() error {
 		return errors.New("endpoint is required for this provider")
 	}
 
-	fmt.Println("Auth method:")
+	fmt.Println(c(ansiBoldCyan, "Auth method"))
 	authChoice, err := promptSelect(r, []string{
 		"Use AWS profile (recommended)",
 		"Access key / secret",
@@ -255,15 +262,15 @@ func runStorageSetup() error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Testing connection...")
+		infof("Testing connection...")
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		if err := storage.TestS3(ctx, client, s3cfg); err != nil {
 			return err
 		}
-		fmt.Println("✔ Connected")
-		fmt.Println("✔ Upload test OK")
-		fmt.Println("✔ Download test OK")
+		successf("✔ Connected")
+		successf("✔ Upload test OK")
+		successf("✔ Download test OK")
 	}
 
 	if err := storage.SaveConfig(cfg); err != nil {
@@ -274,54 +281,71 @@ func runStorageSetup() error {
 	return nil
 }
 
-func promptSelect(r *bufio.Reader, options []string) (int, error) {
-	for i, o := range options {
-		fmt.Printf("%d) %s\n", i+1, o)
-	}
+func promptLine(r *bufio.Reader, label string) (string, error) {
 	for {
-		fmt.Print("> ")
-		line, err := r.ReadString('\n')
+		v, err := promptBox(r, label, "", "")
 		if err != nil {
-			return 0, err
+			fmt.Println(c(ansiYellow, "Value required"))
+			continue
 		}
-		line = strings.TrimSpace(line)
-		n := 0
-		for _, ch := range line {
-			if ch < '0' || ch > '9' {
-				n = 0
-				break
-			}
-			n = n*10 + int(ch-'0')
+		// Ensure value is not empty even in non-TTY mode
+		v = strings.TrimSpace(v)
+		if v == "" {
+			fmt.Println(c(ansiYellow, "Value required"))
+			continue
 		}
-		if n >= 1 && n <= len(options) {
-			return n, nil
-		}
-		fmt.Println("Invalid choice")
+		return v, nil
 	}
 }
 
-func promptLine(r *bufio.Reader, label string) (string, error) {
-	for {
+func promptLineOptional(r *bufio.Reader, label string) (string, error) {
+	// Don't enforce required; allow blank.
+	if !isTTY(os.Stdout) {
 		fmt.Printf("%s: ", label)
 		line, err := r.ReadString('\n')
 		if err != nil {
 			return "", err
 		}
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line, nil
-		}
-		fmt.Println("Value required")
+		return strings.TrimSpace(line), nil
 	}
-}
 
-func promptLineOptional(r *bufio.Reader, label string) (string, error) {
-	fmt.Printf("%s: ", label)
+	label = strings.TrimSpace(label)
+	inner := 66
+	border := "+" + strings.Repeat("-", inner) + "+"
+	inputLinePrefix := "| "
+	inputLineSuffix := " |"
+	contentWidth := inner - 2
+
+	fmt.Println(c(ansiBoldCyan, label))
+	fmt.Println(c(ansiDim, border))
+	fmt.Print(c(ansiDim, inputLinePrefix))
+
 	line, err := r.ReadString('\n')
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(line), nil
+	v := strings.TrimSpace(line)
+
+	shown := v
+	if len(shown) > contentWidth {
+		if contentWidth >= 3 {
+			shown = shown[:contentWidth-3] + "..."
+		} else {
+			shown = shown[:contentWidth]
+		}
+	}
+	pad := ""
+	if n := contentWidth - len(shown); n > 0 {
+		pad = strings.Repeat(" ", n)
+	}
+
+	_, _ = fmt.Fprint(os.Stdout, "\x1b[1A")
+	_, _ = fmt.Fprint(os.Stdout, "\r\x1b[2K")
+	_, _ = fmt.Fprint(os.Stdout, c(ansiDim, inputLinePrefix)+shown+pad+c(ansiDim, inputLineSuffix))
+	_, _ = fmt.Fprint(os.Stdout, "\x1b[1B")
+	fmt.Println(c(ansiDim, border))
+
+	return v, nil
 }
 
 func promptYesNo(r *bufio.Reader, label string, def bool) (bool, error) {
