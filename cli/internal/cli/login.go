@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mgeovany/sentra/cli/internal/auth"
+	"github.com/mgeovany/sentra/cli/internal/storage"
 )
 
 func runLogin() error {
@@ -207,6 +209,55 @@ func runLogin() error {
 	claims, err := auth.ParseAccessTokenClaims(tr.AccessToken)
 	if err == nil {
 		_ = auth.SetUserID(claims.Sub)
+	}
+
+	// Storage choice: hosted provider vs BYOS (S3-compatible).
+	{
+		r := bufio.NewReader(os.Stdin)
+		fmt.Println("Choose storage mode for encrypted .env blobs:")
+		choice, err := promptSelect(r, []string{
+			"Use Sentra storage (recommended)",
+			"Use my storage (AWS S3 / Cloudflare R2 / MinIO / custom S3)",
+		})
+		if err != nil {
+			return err
+		}
+
+		cfg, _, err := auth.LoadConfig()
+		if err != nil {
+			return err
+		}
+		if cfg.MachineID == "" {
+			if cfg2, ensureErr := auth.EnsureConfig(); ensureErr == nil {
+				cfg = cfg2
+			} else {
+				return ensureErr
+			}
+		}
+
+		switch choice {
+		case 1:
+			cfg.StorageMode = "hosted"
+			_ = storage.DeleteConfig() // best-effort: disable BYOS if previously configured
+			if err := auth.SaveConfig(cfg); err != nil {
+				return err
+			}
+		case 2:
+			cfg.StorageMode = "byos"
+			if err := auth.SaveConfig(cfg); err != nil {
+				return err
+			}
+			if _, ok, err := storage.LoadConfig(); err != nil {
+				return err
+			} else if !ok {
+				fmt.Println("Let's set up your storage provider.")
+				if err := runStorageSetup(); err != nil {
+					return err
+				}
+			}
+		default:
+			return errors.New("invalid storage mode")
+		}
 	}
 
 	// Best-effort: register machine with the server if reachable.

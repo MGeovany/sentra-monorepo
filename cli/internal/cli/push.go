@@ -96,15 +96,26 @@ func runPush() error {
 			return fmt.Errorf("missing user id; please run: sentra login")
 		}
 
-		s3cfg, s3c, byos, err := func() (storage.S3Config, *minio.Client, bool, error) {
-			cfg, client, enabled, err := storage.ResolveS3()
+		storageMode := strings.TrimSpace(cfg.StorageMode)
+		if storageMode == "" {
+			storageMode = "hosted"
+		}
+
+		var (
+			s3cfg storage.S3Config
+			s3c   *minio.Client
+			byos  bool
+		)
+		if storageMode == "byos" {
+			var enabled bool
+			s3cfg, s3c, enabled, err = storage.ResolveS3()
 			if err != nil {
-				return storage.S3Config{}, nil, false, err
+				return err
 			}
-			return cfg, client, enabled, nil
-		}()
-		if err != nil {
-			return err
+			if !enabled {
+				return fmt.Errorf("storage not configured (run: sentra storage setup)")
+			}
+			byos = true
 		}
 
 		reqs, err := buildPushRequestV1(context.Background(), scanRoot, machineID, name, c, s3cfg, s3c, byos, userID)
