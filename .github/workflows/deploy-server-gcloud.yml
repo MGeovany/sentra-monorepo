@@ -20,6 +20,8 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for v in GCP_PROJECT_ID GCP_REGION CLOUD_RUN_SERVICE; do
+          for v in GCP_PROJECT_ID GCP_REGION CLOUD_RUN_SERVICE SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
             if [ -z "${!v:-}" ]; then
               echo "Missing repo variable: $v"
               missing=1
@@ -40,6 +42,9 @@ jobs:
             echo "- GCP_PROJECT_ID"
             echo "- GCP_REGION"
             echo "- CLOUD_RUN_SERVICE"
+            echo "- SUPABASE_URL"
+            echo "\nSet repository secrets (Settings -> Secrets and variables -> Actions -> Secrets):"
+            echo "- SUPABASE_SERVICE_ROLE_KEY"
             exit 1
           fi
 
@@ -62,4 +67,4 @@ jobs:
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
             --source server \
-            --set-env-vars SENTRA_LOOPBACK_ONLY=0
+            --set-env-vars SENTRA_LOOPBACK_ONLY=0,SUPABASE_URL="$SUPABASE_URL",SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY"
