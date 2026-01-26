@@ -13,6 +13,8 @@ import (
 type Config struct {
 	MachineID string `json:"machine_id"`
 	UserID    string `json:"user_id,omitempty"`
+	// ServerURL is the remote API base URL (https://... or http://127.0.0.1:port for local dev).
+	ServerURL string `json:"server_url,omitempty"`
 	// StorageMode controls whether the CLI uploads encrypted blobs to user-managed
 	// object storage (BYOS) or sends blobs inline for the hosted provider.
 	// Values: "hosted" (default) | "byos".

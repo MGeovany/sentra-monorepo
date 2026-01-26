@@ -209,6 +209,48 @@ func runLogin() error {
 		_ = auth.SetUserID(claims.Sub)
 	}
 
+	// Persist server URL so users don't need to set env vars.
+	{
+		cfg, _, err := auth.LoadConfig()
+		if err != nil {
+			return err
+		}
+		if cfg.MachineID == "" {
+			if cfg2, ensureErr := auth.EnsureConfig(); ensureErr == nil {
+				cfg = cfg2
+			} else {
+				return ensureErr
+			}
+		}
+		if serverURL, err := serverURLFromEnv(); err == nil {
+			cfg.ServerURL = serverURL
+			if err := auth.SaveConfig(cfg); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Persist server URL so users don't need to set env vars.
+	{
+		cfg, _, err := auth.LoadConfig()
+		if err != nil {
+			return err
+		}
+		if cfg.MachineID == "" {
+			if cfg2, ensureErr := auth.EnsureConfig(); ensureErr == nil {
+				cfg = cfg2
+			} else {
+				return ensureErr
+			}
+		}
+		if serverURL, err := serverURLFromEnv(); err == nil {
+			cfg.ServerURL = serverURL
+			if err := auth.SaveConfig(cfg); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Storage choice: hosted provider vs BYOS (S3-compatible).
 	{
 		r := bufio.NewReader(os.Stdin)
