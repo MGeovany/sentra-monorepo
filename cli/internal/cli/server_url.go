@@ -13,9 +13,18 @@ import (
 const defaultHostedServerURL = "https://sentra-server-198360446701.us-east1.run.app"
 
 func serverURLFromEnv() (string, error) {
+	// Load .env file first to ensure environment variables are available.
+	auth.LoadDotEnv()
+
+	// Highest priority: explicit server URL from environment.
 	v := strings.TrimSpace(os.Getenv("SENTRA_SERVER_URL"))
 	if v != "" {
 		return validateServerURL(v)
+	}
+
+	// Local dev convenience: if PORT is explicitly provided, use localhost.
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		return "http://127.0.0.1:" + port, nil
 	}
 
 	// If user already logged in before, keep using the saved server URL.
@@ -23,11 +32,6 @@ func serverURLFromEnv() (string, error) {
 		if saved := strings.TrimSpace(cfg.ServerURL); saved != "" {
 			return validateServerURL(saved)
 		}
-	}
-
-	// Local dev convenience: if explicitly provided, use localhost.
-	if port := strings.TrimSpace(os.Getenv("SERVER_PORT")); port != "" {
-		return "http://127.0.0.1:" + port, nil
 	}
 
 	// Default for end-users.

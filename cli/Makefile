@@ -56,3 +56,6 @@ storage-reset:
 	
 doctor:
 	go run ./cmd/sentra doctor
+
+wipe:
+	go run ./cmd/sentra wipe

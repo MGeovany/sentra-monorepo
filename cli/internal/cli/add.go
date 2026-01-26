@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,11 +16,11 @@ func runAdd(args []string) error {
 		return errors.New("usage: sentra add . | sentra add <path>")
 	}
 
-	homeDir, err := os.UserHomeDir()
+	// scan root is configurable and persisted in local index
+	scanRoot, err := resolveScanRoot()
 	if err != nil {
 		return err
 	}
-	scanRoot := filepath.Join(homeDir, "dev")
 
 	projects, err := scanner.Scan(scanRoot)
 	if err != nil {

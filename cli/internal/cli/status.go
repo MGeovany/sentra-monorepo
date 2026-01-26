@@ -2,20 +2,16 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/mgeovany/sentra/cli/internal/scanner"
 	"github.com/mgeovany/sentra/cli/internal/state"
 )
 
 func runStatus() error {
-	homeDir, err := os.UserHomeDir()
+	scanRoot, err := resolveScanRoot()
 	if err != nil {
 		return err
 	}
-
-	scanRoot := filepath.Join(homeDir, "dev")
 
 	statePath, err := state.DefaultPath()
 	if err != nil {

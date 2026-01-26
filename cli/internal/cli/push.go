@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,11 +99,10 @@ func runPush() error {
 	}
 	endpoint := serverURL + "/push"
 
-	homeDir, err := os.UserHomeDir()
+	scanRoot, err := resolveScanRoot()
 	if err != nil {
 		return err
 	}
-	scanRoot := filepath.Join(homeDir, "dev")
 
 	client := &http.Client{Timeout: 20 * time.Second}
 

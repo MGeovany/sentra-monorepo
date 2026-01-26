@@ -1,6 +1,6 @@
 .PHONY: run test build health me kill-port
 
-SERVER_PORT ?= 8080
+PORT ?= 8080
 
 run:
 	PORT=$(PORT) go run .
