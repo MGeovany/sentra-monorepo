@@ -1,0 +1,65 @@
+name: Deploy Server (GCloud)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-server-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in GCP_PROJECT_ID GCP_REGION CLOUD_RUN_SERVICE; do
+            if [ -z "${!v:-}" ]; then
+              echo "Missing repo variable: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "\nSet repository variables (Settings -> Secrets and variables -> Actions -> Variables):"
+            echo "- GCP_PROJECT_ID"
+            echo "- GCP_REGION"
+            echo "- CLOUD_RUN_SERVICE"
+            exit 1
+          fi
+
+      - name: Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Deploy to Cloud Run
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud --quiet run deploy "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --source server \
+            --set-env-vars SENTRA_LOOPBACK_ONLY=0
