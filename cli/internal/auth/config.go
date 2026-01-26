@@ -11,10 +11,14 @@ import (
 )
 
 type Config struct {
-	MachineID string    `json:"machine_id"`
-	UserID    string    `json:"user_id,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	Version   int       `json:"version"`
+	MachineID string `json:"machine_id"`
+	UserID    string `json:"user_id,omitempty"`
+	// StorageMode controls whether the CLI uploads encrypted blobs to user-managed
+	// object storage (BYOS) or sends blobs inline for the hosted provider.
+	// Values: "hosted" (default) | "byos".
+	StorageMode string    `json:"storage_mode,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	Version     int       `json:"version"`
 }
 
 func configPath() (string, error) {

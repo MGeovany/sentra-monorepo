@@ -18,7 +18,6 @@ import (
 )
 
 func main() {
-	config.LoadDotEnv()
 	cfg := config.FromEnv()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

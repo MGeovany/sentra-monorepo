@@ -20,7 +20,7 @@ func ensureRemoteSession() (auth.Session, error) {
 		return auth.Session{}, errors.New("missing SUPABASE_URL or SUPABASE_ANON_KEY")
 	}
 
-	oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "github"}
+	oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "google"}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
