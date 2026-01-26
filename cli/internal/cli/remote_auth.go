@@ -15,9 +15,12 @@ func ensureRemoteSession() (auth.Session, error) {
 	auth.LoadDotEnv()
 
 	supabaseURL := strings.TrimSpace(os.Getenv("SUPABASE_URL"))
+	if supabaseURL == "" {
+		supabaseURL = defaultHostedSupabaseURL
+	}
 	anonKey := strings.TrimSpace(os.Getenv("SUPABASE_ANON_KEY"))
-	if supabaseURL == "" || anonKey == "" {
-		return auth.Session{}, errors.New("authentication service not configured")
+	if anonKey == "" {
+		anonKey = defaultHostedSupabaseAnonKey
 	}
 
 	oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "google"}

@@ -50,11 +50,13 @@ func runDoctor() error {
 
 	supabaseURL := strings.TrimSpace(os.Getenv("SUPABASE_URL"))
 	anonKey := strings.TrimSpace(os.Getenv("SUPABASE_ANON_KEY"))
-	if supabaseURL == "" || anonKey == "" {
-		d.warnf("authentication service not configured (login/refresh will not work)")
-	} else {
-		d.okf("authentication service configured")
+	if supabaseURL == "" {
+		supabaseURL = defaultHostedSupabaseURL
 	}
+	if anonKey == "" {
+		anonKey = defaultHostedSupabaseAnonKey
+	}
+	d.okf("authentication service configured")
 
 	if cfg, ok, err := auth.LoadConfig(); err != nil {
 		d.warnf("cannot read auth config: %v", err)

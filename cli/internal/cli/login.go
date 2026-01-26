@@ -23,8 +23,11 @@ func runLogin() error {
 
 	supabaseURL := strings.TrimSpace(os.Getenv("SUPABASE_URL"))
 	anonKey := strings.TrimSpace(os.Getenv("SUPABASE_ANON_KEY"))
-	if supabaseURL == "" || anonKey == "" {
-		return errors.New("authentication service not configured")
+	if supabaseURL == "" {
+		supabaseURL = defaultHostedSupabaseURL
+	}
+	if anonKey == "" {
+		anonKey = defaultHostedSupabaseAnonKey
 	}
 
 	verifier, err := auth.NewCodeVerifier()
