@@ -85,7 +85,7 @@ func runLogin() error {
 	fmt.Println()
 	fmt.Println(c(ansiBoldCyan, "Login"))
 	fmt.Println()
-	
+
 	// Try to open browser automatically
 	if err := openBrowser(authURL); err == nil {
 		fmt.Println(c(ansiDim, "Opening your browser..."))
@@ -95,7 +95,7 @@ func runLogin() error {
 		fmt.Println(c(ansiCyan, authURL))
 	}
 	fmt.Println()
-	
+
 	sp := startSpinner("Waiting for authentication...")
 
 	codeCh := make(chan string, 1)

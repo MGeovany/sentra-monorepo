@@ -97,18 +97,27 @@ func runPreCommitChecks() error {
 	// Find the project root (monorepo root)
 	projectRoot, err := findProjectRoot()
 	if err != nil {
-		verbosef("Could not find project root, skipping pre-commit checks: %v", err)
-		return nil // Don't fail if we can't find the root
+		// If we can't find the root, warn but don't fail (might be running outside repo)
+		warnf("⚠ Could not find project root, skipping pre-commit checks: %v", err)
+		verbosef("Current working directory: %s", func() string {
+			wd, _ := os.Getwd()
+			return wd
+		}())
+		return nil
 	}
 	verbosef("Project root: %s", projectRoot)
 
-	// Run go fmt
-	sp := startSpinner("Formatting code...")
+	// Run go fmt and verify
+	sp := startSpinner("Formatting and verifying code...")
 	if err := runGoFmt(projectRoot); err != nil {
 		sp.StopInfo("")
-		return fmt.Errorf("go fmt failed: %w", err)
+		warnf("⚠ Pre-commit check failed:")
+		fmt.Println()
+		fmt.Println(err.Error())
+		fmt.Println()
+		return fmt.Errorf("code formatting check failed - please fix formatting issues before committing")
 	}
-	sp.StopSuccess("✔ Code formatted")
+	sp.StopSuccess("✔ Code formatted and verified")
 
 	// Run lint
 	sp2 := startSpinner("Linting code...")
@@ -155,7 +164,7 @@ func findProjectRoot() (string, error) {
 }
 
 func runGoFmt(projectRoot string) error {
-	// Format CLI code
+	// First, format the code
 	cliDir := filepath.Join(projectRoot, "cli")
 	if _, err := os.Stat(cliDir); err == nil {
 		cmd := exec.Command("go", "fmt", "./...")
@@ -168,7 +177,6 @@ func runGoFmt(projectRoot string) error {
 		verbosef("Formatted CLI code")
 	}
 
-	// Format Server code
 	serverDir := filepath.Join(projectRoot, "server")
 	if _, err := os.Stat(serverDir); err == nil {
 		cmd := exec.Command("go", "fmt", "./...")
@@ -179,6 +187,65 @@ func runGoFmt(projectRoot string) error {
 			return fmt.Errorf("go fmt in server/ failed: %w", err)
 		}
 		verbosef("Formatted Server code")
+	}
+
+	// Then verify that all files are properly formatted
+	if err := verifyGoFmt(projectRoot); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func verifyGoFmt(projectRoot string) error {
+	// Check CLI code
+	cliDir := filepath.Join(projectRoot, "cli")
+	if _, err := os.Stat(cliDir); err == nil {
+		// Use gofmt -l to find unformatted files
+		cmd := exec.Command("gofmt", "-l", ".")
+		cmd.Dir = cliDir
+		unformatted, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("gofmt check failed in cli/: %w (gofmt is required for pre-commit checks)", err)
+		}
+		unformattedStr := strings.TrimSpace(string(unformatted))
+		if unformattedStr != "" {
+			lines := strings.Split(unformattedStr, "\n")
+			var fileList []string
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					fileList = append(fileList, filepath.Join("cli", line))
+				}
+			}
+			return fmt.Errorf("files need formatting:\n%s\nRun: go fmt ./... in cli/", strings.Join(fileList, "\n"))
+		}
+		verbosef("CLI code formatting verified")
+	}
+
+	// Check Server code
+	serverDir := filepath.Join(projectRoot, "server")
+	if _, err := os.Stat(serverDir); err == nil {
+		// Use gofmt -l to find unformatted files
+		cmd := exec.Command("gofmt", "-l", ".")
+		cmd.Dir = serverDir
+		unformatted, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("gofmt check failed in server/: %w (gofmt is required for pre-commit checks)", err)
+		}
+		unformattedStr := strings.TrimSpace(string(unformatted))
+		if unformattedStr != "" {
+			lines := strings.Split(unformattedStr, "\n")
+			var fileList []string
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					fileList = append(fileList, filepath.Join("server", line))
+				}
+			}
+			return fmt.Errorf("files need formatting:\n%s\nRun: go fmt ./... in server/", strings.Join(fileList, "\n"))
+		}
+		verbosef("Server code formatting verified")
 	}
 
 	return nil
