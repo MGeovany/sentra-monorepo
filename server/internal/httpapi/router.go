@@ -2,10 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/mgeovany/sentra/server/internal/auth"
+	"github.com/mgeovany/sentra/server/internal/health"
 	"github.com/mgeovany/sentra/server/internal/repo"
 )
 
@@ -23,11 +23,7 @@ type Deps struct {
 func New(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "ok")
-	})
+	health.Register(mux)
 
 	mux.Handle("/users/me", deps.Auth.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, _ := auth.UserFromContext(r.Context())

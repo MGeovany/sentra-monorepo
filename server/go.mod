@@ -4,6 +4,8 @@ go 1.25.5
 
 require github.com/joho/godotenv v1.5.1
 
-require github.com/golang-jwt/jwt/v5 v5.3.0
-
-require github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
+require (
+	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/google/uuid v1.6.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+)

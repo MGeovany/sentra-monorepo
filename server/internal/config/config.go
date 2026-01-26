@@ -14,7 +14,10 @@ type Config struct {
 }
 
 func FromEnv() Config {
-	port := os.Getenv("SERVER_PORT")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = os.Getenv("SERVER_PORT")
+	}
 	if port == "" {
 		port = "8080"
 	}
@@ -22,7 +25,12 @@ func FromEnv() Config {
 	host := os.Getenv("SERVER_HOST")
 	if host == "" {
 		// Secure default: bind only to loopback.
-		host = "127.0.0.1"
+		// Cloud Run (and most managed platforms) require binding to 0.0.0.0.
+		if os.Getenv("PORT") != "" {
+			host = "0.0.0.0"
+		} else {
+			host = "127.0.0.1"
+		}
 	}
 
 	machinesTable := os.Getenv("SUPABASE_MACHINES_TABLE")
