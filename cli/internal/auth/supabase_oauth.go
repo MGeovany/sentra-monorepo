@@ -36,7 +36,7 @@ func (s SupabaseOAuth) AuthorizeURL(redirectTo, codeChallenge string) (string, e
 	}
 	provider := s.Provider
 	if provider == "" {
-		provider = "github"
+		provider = "google"
 	}
 
 	u, err := url.Parse(base + "/auth/v1/authorize")

@@ -71,7 +71,7 @@ func runLogin() error {
 	redirectToURL.RawQuery = qRedirect.Encode()
 	redirectTo := redirectToURL.String()
 
-	oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "github"}
+	oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "google"}
 	authURL, err := oauth.AuthorizeURL(redirectTo, challenge)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func runLogin() error {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			if errDesc != "" || errName != "" || errCode != "" {
 				_, _ = fmt.Fprintf(w,
-					"Login failed.\n\nSupabase returned:\n- error: %s\n- error_code: %s\n- error_description: %s\n\nFix: verify the GitHub provider settings in Supabase and the GitHub OAuth App callback URL.\n",
+					"Login failed.\n\nSupabase returned:\n- error: %s\n- error_code: %s\n- error_description: %s\n\nFix: verify the Google provider settings in Supabase and the Google OAuth client redirect URL.\n",
 					errName,
 					errCode,
 					errDesc,

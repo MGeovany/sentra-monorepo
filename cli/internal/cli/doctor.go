@@ -98,7 +98,7 @@ func runDoctor() error {
 			if until < 0 {
 				// Try to refresh if possible.
 				if supabaseURL != "" && anonKey != "" && strings.TrimSpace(sess.RefreshToken) != "" {
-					oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "github"}
+					oauth := auth.SupabaseOAuth{SupabaseURL: supabaseURL, AnonKey: anonKey, Provider: "google"}
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
 					if _, err := auth.EnsureSession(ctx, oauth); err != nil {
