@@ -284,10 +284,17 @@ func runStorageSetup() error {
 func promptLine(r *bufio.Reader, label string) (string, error) {
 	for {
 		v, err := promptBox(r, label, "", "")
-		if err == nil {
-			return v, nil
+		if err != nil {
+			fmt.Println(c(ansiYellow, "Value required"))
+			continue
 		}
-		fmt.Println(c(ansiYellow, "Value required"))
+		// Ensure value is not empty even in non-TTY mode
+		v = strings.TrimSpace(v)
+		if v == "" {
+			fmt.Println(c(ansiYellow, "Value required"))
+			continue
+		}
+		return v, nil
 	}
 }
 
