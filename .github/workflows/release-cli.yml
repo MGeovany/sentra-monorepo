@@ -5,12 +5,9 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
 jobs:
-  build-and-release:
-    name: Build and publish assets
+  build:
+    name: Build (${{ matrix.goos }}, ${{ matrix.goarch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -59,8 +56,30 @@ jobs:
           out="dist/sentra_${GOOS}_${GOARCH}${{ matrix.ext }}"
           go build -trimpath -ldflags "-s -w" -o "$out" ./cmd/sentra
 
-      - name: Upload assets to GitHub Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentra_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: cli/dist/sentra_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List assets
+        run: ls -la dist || true
+
+      - name: Create/Update GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            cli/dist/sentra_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
+            dist/**/sentra_*
