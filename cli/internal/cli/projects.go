@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 type remoteProject struct {
@@ -79,6 +82,12 @@ func runProjects() error {
 		return nil
 	}
 
+	// Pretty table for humans; TSV for scripts.
+	if isTTY(os.Stdout) {
+		printProjectsTable(projects)
+		return nil
+	}
+
 	for _, p := range projects {
 		root := strings.TrimSpace(p.RootPath)
 		if root == "" {
@@ -104,4 +113,131 @@ func runProjects() error {
 	}
 
 	return nil
+}
+
+func printProjectsTable(projects []remoteProject) {
+	// Header
+	fmt.Println(c(ansiBoldCyan, "sentra projects"))
+
+	// Column sizing
+	width := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		width = w
+	}
+	if width < 60 {
+		width = 60
+	}
+
+	projW := 10
+	for _, p := range projects {
+		root := strings.TrimSpace(p.RootPath)
+		if root == "" {
+			root = "(unknown)"
+		}
+		if len(root) > projW {
+			projW = len(root)
+		}
+	}
+	if projW < 12 {
+		projW = 12
+	}
+	if projW > 28 {
+		projW = 28
+	}
+
+	commitW := 8
+	filesW := 5
+	gap := 2
+	minMsgW := 20
+	msgW := width - projW - commitW - filesW - (gap * 3)
+	if msgW < minMsgW {
+		msgW = minMsgW
+	}
+
+	header := fmt.Sprintf(
+		"%s%s%s%s%s%s%s",
+		padRight("PROJECT", projW),
+		strings.Repeat(" ", gap),
+		padRight("COMMIT", commitW),
+		strings.Repeat(" ", gap),
+		padLeft("FILES", filesW),
+		strings.Repeat(" ", gap),
+		padRight("MESSAGE", msgW),
+	)
+	fmt.Println(c(ansiDim, header))
+	fmt.Println(c(ansiDim, strings.Repeat("-", minInt(width, len(header)))))
+
+	for _, p := range projects {
+		root := strings.TrimSpace(p.RootPath)
+		if root == "" {
+			root = "(unknown)"
+		}
+		last := strings.TrimSpace(p.LastCommitID)
+		if last == "" {
+			last = "-"
+		} else if len(last) > 8 {
+			last = last[:8]
+		}
+		msg := strings.TrimSpace(p.LastCommitMessage)
+		if msg == "" {
+			msg = "-"
+		}
+
+		colProject := padRight(truncate(root, projW), projW)
+		colCommit := padRight(truncate(last, commitW), commitW)
+		colFiles := padLeft(fmt.Sprintf("%d", p.FileCount), filesW)
+		colMsg := padRight(truncate(msg, msgW), msgW)
+
+		colCommit = c(ansiCyan, colCommit)
+		if p.FileCount == 0 {
+			colFiles = c(ansiDim, colFiles)
+		} else {
+			colFiles = c(ansiBoldCyan, colFiles)
+		}
+
+		fmt.Printf(
+			"%s%s%s%s%s%s%s\n",
+			colProject,
+			strings.Repeat(" ", gap),
+			colCommit,
+			strings.Repeat(" ", gap),
+			colFiles,
+			strings.Repeat(" ", gap),
+			colMsg,
+		)
+	}
+}
+
+func padRight(s string, n int) string {
+	if len(s) >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-len(s))
+}
+
+func padLeft(s string, n int) string {
+	if len(s) >= n {
+		return s
+	}
+	return strings.Repeat(" ", n-len(s)) + s
+}
+
+func truncate(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return s[:n]
+	}
+	return s[:n-3] + "..."
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

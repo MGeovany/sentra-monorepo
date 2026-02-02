@@ -27,7 +27,17 @@ func serverURLFromEnv() (string, error) {
 	cfg, ok, err := auth.LoadConfig()
 	if err == nil && ok {
 		if saved := strings.TrimSpace(cfg.ServerURL); saved != "" {
-			return validateServerURL(saved)
+			// Safety: never get stuck on a saved localhost URL.
+			if u, perr := url.Parse(saved); perr == nil {
+				if isLoopbackHost(u.Hostname()) {
+					cfg.ServerURL = ""
+					_ = auth.SaveConfig(cfg)
+				} else {
+					return validateServerURL(saved)
+				}
+			} else {
+				return validateServerURL(saved)
+			}
 		}
 	}
 
