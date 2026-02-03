@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -10,7 +9,7 @@ import (
 	"golang.org/x/term"
 )
 
-func promptSecret(r *bufio.Reader, label string) (string, error) {
+func promptSecret(label string) (string, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		label = "Secret"
@@ -31,7 +30,5 @@ func promptSecret(r *bufio.Reader, label string) (string, error) {
 	if v == "" {
 		return "", errors.New("value required")
 	}
-	// Drain any buffered input.
-	_, _ = r.ReadString('\n')
 	return v, nil
 }

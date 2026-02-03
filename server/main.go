@@ -58,15 +58,19 @@ func main() {
 
 	h := httpapi.New(httpapi.Deps{Auth: middleware, Machines: machines, Vault: vault, Idem: idem, Projects: projects, Commits: commits, Files: files, Export: export, Push: push})
 
+	ln, err := net.Listen("tcp", net.JoinHostPort(cfg.Host, cfg.Port))
+	if err != nil {
+		log.Fatalf("failed to listen on %s:%s: %v", cfg.Host, cfg.Port, err)
+	}
+
 	srv := &http.Server{
-		Addr:              net.JoinHostPort(cfg.Host, cfg.Port),
 		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Printf("listening on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("listening on %s", ln.Addr())
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}
 	}()

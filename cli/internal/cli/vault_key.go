@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -48,16 +47,14 @@ func promptVaultPassphrase(confirm bool) (string, error) {
 	if v := strings.TrimSpace(os.Getenv("SENTRA_VAULT_PASSPHRASE")); v != "" {
 		return v, nil
 	}
-
-	r := bufio.NewReader(os.Stdin)
 	if !confirm {
-		return promptSecret(r, "Vault passphrase")
+		return promptSecret("Vault passphrase")
 	}
-	pass1, err := promptSecret(r, "Create vault passphrase")
+	pass1, err := promptSecret("Create vault passphrase")
 	if err != nil {
 		return "", err
 	}
-	pass2, err := promptSecret(r, "Confirm vault passphrase")
+	pass2, err := promptSecret("Confirm vault passphrase")
 	if err != nil {
 		return "", err
 	}

@@ -22,8 +22,9 @@ import (
 // sentra sync
 // Downloads latest env files from remote and writes them into local repos under scan root.
 func runSync(args []string) error {
-	if len(args) != 0 {
-		return errors.New("usage: sentra sync")
+	outDir, err := parseSyncArgs(args)
+	if err != nil {
+		return err
 	}
 
 	verbosef("Starting sync operation...")
@@ -42,11 +43,21 @@ func runSync(args []string) error {
 	}
 	verbosef("Scan root: %s", scanRoot)
 
+	destRoot := scanRoot
+	if strings.TrimSpace(outDir) != "" {
+		destRoot = filepath.Clean(expandUserHome(outDir))
+	}
+	verbosef("Sync destination root: %s", destRoot)
+
 	serverURL, err := serverURLFromEnv()
 	if err != nil {
 		return err
 	}
 	verbosef("Server URL: %s", serverURL)
+	if strings.TrimSpace(outDir) == "" {
+		warnf("⚠ sentra sync will overwrite local env files under %s based on remote state", scanRoot)
+		infof("Hint: use `sentra sync --out <dir>` to write into a separate folder")
+	}
 
 	// Vault key is only needed when decrypting sentra-v1 files; fetch lazily.
 	var vaultKey []byte
@@ -81,12 +92,14 @@ func runSync(args []string) error {
 			continue
 		}
 		sp2.Set(fmt.Sprintf("Syncing %s (%d/%d)...", root, i+1, len(projects)))
-		localRepo := filepath.Join(scanRoot, filepath.FromSlash(root))
+		localRepo := filepath.Join(destRoot, filepath.FromSlash(root))
 		verbosef("Checking local repo: %s", localRepo)
-		if !isDir(localRepo) {
-			verbosef("Skipping %s: local directory not found", root)
-			skippedMissing++
-			continue
+		if strings.TrimSpace(outDir) == "" {
+			if !isDir(localRepo) {
+				verbosef("Skipping %s: local directory not found", root)
+				skippedMissing++
+				continue
+			}
 		}
 
 		verbosef("Fetching files for project: %s", root)
@@ -126,7 +139,7 @@ func runSync(args []string) error {
 				return fmt.Errorf("unexpected file path received from server")
 			}
 
-			outPath := filepath.Join(scanRoot, filepath.FromSlash(rel))
+			outPath := filepath.Join(destRoot, filepath.FromSlash(rel))
 			verbosef("Writing file to: %s", outPath)
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				sp2.StopInfo("")
@@ -141,12 +154,41 @@ func runSync(args []string) error {
 		}
 	}
 	sp2.StopSuccess(fmt.Sprintf("✔ synced %d env file(s) across %d project(s)", written, scanned))
-	if skippedMissing > 0 {
-		warnf("⚠ %d project(s) missing locally under %s", skippedMissing, scanRoot)
-		verbosef("Missing projects were skipped (not found in scan root)")
+	if strings.TrimSpace(outDir) == "" {
+		if skippedMissing > 0 {
+			warnf("⚠ %d project(s) missing locally under %s", skippedMissing, scanRoot)
+			verbosef("Missing projects were skipped (not found in scan root)")
+		}
 	}
 	verbosef("Sync completed: %d file(s) written, %d project(s) synced, %d skipped", written, scanned, skippedMissing)
 	return nil
+}
+
+func parseSyncArgs(args []string) (out string, err error) {
+	// sentra sync [--out <dir>]
+	if len(args) == 0 {
+		return "", nil
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--out", "-o":
+			if i+1 >= len(args) {
+				return "", errors.New("usage: sentra sync [--out <dir>]")
+			}
+			if strings.TrimSpace(out) != "" {
+				return "", errors.New("sync: --out provided multiple times")
+			}
+			out = strings.TrimSpace(args[i+1])
+			if out == "" {
+				return "", errors.New("usage: sentra sync [--out <dir>]")
+			}
+			i++
+		default:
+			return "", errors.New("usage: sentra sync [--out <dir>]")
+		}
+	}
+	return out, nil
 }
 
 func fetchRemoteProjects(serverURL string, accessToken string) ([]remoteProject, error) {
