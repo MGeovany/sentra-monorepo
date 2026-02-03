@@ -312,7 +312,7 @@ func runLogin() error {
 		defer cancel()
 		if err := registerMachine(ctx, tr.AccessToken); err != nil {
 			// Keep login output clean; registration is optional and can be diagnosed via `sentra doctor`.
-			if v := strings.TrimSpace(os.Getenv("SENTRA_VERBOSE")); v == "1" || strings.EqualFold(v, "true") {
+			if isVerbose() {
 				fmt.Printf("Note: remote machine registration skipped: %v\n", err)
 				fmt.Println("Hint: run `sentra doctor` to diagnose server connectivity issues.")
 			}

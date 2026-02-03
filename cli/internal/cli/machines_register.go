@@ -93,6 +93,9 @@ func registerMachine(ctx context.Context, accessToken string) error {
 		if msg == "" {
 			msg = strings.TrimSpace(http.StatusText(resp.StatusCode))
 		}
+		if tr := responseTrace(resp); tr != "" {
+			msg = msg + "; " + tr
+		}
 		if isVerbose() {
 			return fmt.Errorf("machine registration failed: status=%d msg=%s", resp.StatusCode, msg)
 		}

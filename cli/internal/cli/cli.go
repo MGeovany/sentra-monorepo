@@ -15,6 +15,18 @@ func Execute(args []string) error {
 		return usageError()
 	}
 
+	// Global flags / commands.
+	switch args[0] {
+	case "version", "--version", "-v", "-V":
+		if len(args) > 1 {
+			return errors.New("sentra version does not accept flags/args")
+		}
+		printVersion()
+		return nil
+	case "help", "--help", "-h":
+		return usageError()
+	}
+
 	switch args[0] {
 	case "login":
 		if len(args) > 1 {
@@ -80,7 +92,7 @@ func Execute(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sentra login | sentra storage setup|status|test|reset | sentra projects | sentra history | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra overview | sentra add | sentra status | sentra commit | sentra sync | sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify] | sentra push | sentra wipe | sentra doctor")
+	return errors.New("usage: sentra version|--version | sentra login | sentra storage setup|status|test|reset | sentra projects | sentra history | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] [--out <dir>] | sentra who | sentra scan | sentra overview | sentra add | sentra status | sentra commit | sentra sync | sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify] | sentra push | sentra wipe | sentra doctor")
 }
 
 func runScan() error {

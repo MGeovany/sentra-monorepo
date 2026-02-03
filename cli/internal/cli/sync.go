@@ -48,6 +48,9 @@ func runSync(args []string) error {
 	}
 	verbosef("Server URL: %s", serverURL)
 
+	// Vault key is only needed when decrypting sentra-v1 files; fetch lazily.
+	var vaultKey []byte
+
 	sp := startSpinner("Fetching projects from remote...")
 	projects, err := fetchRemoteProjects(serverURL, sess.AccessToken)
 	if err != nil {
@@ -101,7 +104,7 @@ func runSync(args []string) error {
 		scanned++
 		for _, f := range files {
 			verbosef("Processing file: %s (size: %d bytes, cipher: %s)", f.Path, f.Size, f.Cipher)
-			plain, err := decryptRemoteExportFile(f)
+			plain, err := decryptRemoteExportFile(serverURL, sess.AccessToken, &vaultKey, f)
 			if err != nil {
 				sp2.StopInfo("")
 				return err
@@ -210,7 +213,7 @@ func fetchRemoteExport(serverURL string, accessToken string, root string) ([]rem
 	return files, nil
 }
 
-func decryptRemoteExportFile(f remoteExportFile) ([]byte, error) {
+func decryptRemoteExportFile(serverURL string, accessToken string, vaultKey *[]byte, f remoteExportFile) ([]byte, error) {
 	cipherName := strings.TrimSpace(f.Cipher)
 	blobB64 := strings.TrimSpace(f.BlobB64)
 	if blobB64 == "" && strings.TrimSpace(f.StorageKey) != "" {
@@ -241,9 +244,35 @@ func decryptRemoteExportFile(f remoteExportFile) ([]byte, error) {
 		blobB64 = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	plain, err := auth.DecryptEnvBlob(cipherName, blobB64)
+	if strings.TrimSpace(cipherName) == "sentra-v1" {
+		if vaultKey != nil && len(*vaultKey) == 0 {
+			k, err := ensureVaultKey(serverURL, accessToken)
+			if err != nil {
+				return nil, err
+			}
+			*vaultKey = k
+		}
+		plain, err := auth.DecryptEnvBlobWithKey(cipherName, *vaultKey, blobB64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt file (%s)", strings.TrimSpace(f.Path))
+		}
+		return plain, nil
+	}
+
+	plain, err := auth.DecryptEnvBlobLegacy(cipherName, blobB64)
 	if err != nil {
+		if strings.TrimSpace(cipherName) == "ed25519+aes-256-gcm-v1" {
+			return nil, fmt.Errorf("failed to decrypt legacy file (%s): this file was encrypted with a device-local key; re-push it from the original machine to migrate", strings.TrimSpace(f.Path))
+		}
 		return nil, fmt.Errorf("failed to decrypt file (%s)", strings.TrimSpace(f.Path))
 	}
 	return plain, nil
+}
+
+func decryptEnvFile(cipherName string, blobB64 string, vaultKey []byte) ([]byte, error) {
+	c := strings.TrimSpace(cipherName)
+	if c == "sentra-v1" {
+		return auth.DecryptEnvBlobWithKey(c, vaultKey, blobB64)
+	}
+	return auth.DecryptEnvBlobLegacy(c, blobB64)
 }

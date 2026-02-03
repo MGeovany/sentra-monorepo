@@ -32,6 +32,7 @@ func main() {
 	middleware := auth.NewMiddleware(verifier)
 
 	var machines repo.MachineStore = repo.DisabledMachineStore{}
+	var vault repo.VaultKeyStore = repo.DisabledVaultKeyStore{}
 	var idem repo.IdempotencyStore = repo.DisabledIdempotencyStore{}
 	var projects repo.ProjectStore = repo.DisabledProjectStore{}
 	var commits repo.CommitStore = repo.DisabledCommitStore{}
@@ -44,6 +45,7 @@ func main() {
 			log.Printf("supabase db disabled (check SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
 		} else {
 			machines = repo.NewSupabaseMachineStore(client, "")
+			vault = repo.NewSupabaseVaultKeyStore(client, "")
 			idem = repo.NewSupabaseIdempotencyStore(client, "")
 			projects = repo.NewSupabaseProjectStore(client, "")
 			commits = repo.NewSupabaseCommitStore(client, "")
@@ -54,7 +56,7 @@ func main() {
 		}
 	}
 
-	h := httpapi.New(httpapi.Deps{Auth: middleware, Machines: machines, Idem: idem, Projects: projects, Commits: commits, Files: files, Export: export, Push: push})
+	h := httpapi.New(httpapi.Deps{Auth: middleware, Machines: machines, Vault: vault, Idem: idem, Projects: projects, Commits: commits, Files: files, Export: export, Push: push})
 
 	srv := &http.Server{
 		Addr:              net.JoinHostPort(cfg.Host, cfg.Port),

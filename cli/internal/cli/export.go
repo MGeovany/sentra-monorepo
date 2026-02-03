@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mgeovany/sentra/cli/internal/auth"
 	"github.com/mgeovany/sentra/cli/internal/storage"
 )
 
@@ -35,7 +34,7 @@ type remoteExportFile struct {
 
 func runExport(args []string) error {
 	verbosef("Starting export operation...")
-	root, at, err := parseExportArgs(args)
+	root, at, out, err := parseExportArgs(args)
 	if err != nil {
 		return err
 	}
@@ -44,6 +43,9 @@ func runExport(args []string) error {
 		verbosef("Exporting at commit: %s", at)
 	} else {
 		verbosef("Exporting latest commit")
+	}
+	if strings.TrimSpace(out) != "" {
+		verbosef("Export directory override: %s", out)
 	}
 
 	sess, err := ensureRemoteSession()
@@ -103,9 +105,26 @@ func runExport(args []string) error {
 	}
 	verbosef("Received %d file(s) from server", len(files))
 
+	// Resolve vault key once if needed.
+	var vaultKey []byte
+	for _, f := range files {
+		if strings.TrimSpace(f.Cipher) == "sentra-v1" {
+			vaultKey, err = ensureVaultKey(serverURL, sess.AccessToken)
+			if err != nil {
+				return err
+			}
+			break
+		}
+	}
+
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 
 	baseDir := filepath.Join("sentra-export", root)
+	if v := strings.TrimSpace(out); v != "" {
+		v = expandUserHome(v)
+		v = filepath.Clean(v)
+		baseDir = filepath.Join(v, root)
+	}
 	verbosef("Export directory: %s", baseDir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return err
@@ -154,9 +173,12 @@ func runExport(args []string) error {
 		}
 
 		verbosef("Decrypting file: %s", f.Path)
-		plain, err := auth.DecryptEnvBlob(cipherName, blobB64)
+		plain, err := decryptEnvFile(cipherName, blobB64, vaultKey)
 		if err != nil {
-			return fmt.Errorf("failed to decrypt file (%s)", f.Path)
+			if strings.TrimSpace(cipherName) == "ed25519+aes-256-gcm-v1" {
+				return fmt.Errorf("failed to decrypt legacy file (%s): this file was encrypted with a device-local key; re-push it from the original machine to migrate", f.Path)
+			}
+			return fmt.Errorf("failed to decrypt file (%s): %w", f.Path, err)
 		}
 		verbosef("Decrypted file: %s (%d bytes)", f.Path, len(plain))
 
@@ -190,26 +212,51 @@ func runExport(args []string) error {
 	return nil
 }
 
-func parseExportArgs(args []string) (root string, at string, err error) {
+func parseExportArgs(args []string) (root string, at string, out string, err error) {
 	if len(args) < 1 {
-		return "", "", errors.New("usage: sentra export <project> [--at <commit>]")
+		return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
 	}
 
 	root = projectRootFromPath(args[0])
 	root = strings.TrimSpace(root)
 	if root == "" {
-		return "", "", errors.New("usage: sentra export <project> [--at <commit>]")
+		return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
 	}
 
-	if len(args) == 1 {
-		return root, "", nil
+	// Flags:
+	// --at <commit>
+	// --out <dir> (or -o <dir>)
+	rest := args[1:]
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case "--at":
+			if i+1 >= len(rest) {
+				return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
+			}
+			if at != "" {
+				return "", "", "", errors.New("export: --at provided multiple times")
+			}
+			at = strings.TrimSpace(rest[i+1])
+			if at == "" {
+				return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
+			}
+			i++
+		case "--out", "-o":
+			if i+1 >= len(rest) {
+				return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
+			}
+			if strings.TrimSpace(out) != "" {
+				return "", "", "", errors.New("export: --out provided multiple times")
+			}
+			out = strings.TrimSpace(rest[i+1])
+			if out == "" {
+				return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
+			}
+			i++
+		default:
+			return "", "", "", errors.New("usage: sentra export <project> [--at <commit>] [--out <dir>]")
+		}
 	}
-	if len(args) != 3 || args[1] != "--at" {
-		return "", "", errors.New("usage: sentra export <project> [--at <commit>]")
-	}
-	at = strings.TrimSpace(args[2])
-	if at == "" {
-		return "", "", errors.New("usage: sentra export <project> [--at <commit>]")
-	}
-	return root, at, nil
+
+	return root, at, out, nil
 }
