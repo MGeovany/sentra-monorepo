@@ -22,8 +22,9 @@ import (
 // sentra sync
 // Downloads latest env files from remote and writes them into local repos under scan root.
 func runSync(args []string) error {
-	if len(args) != 0 {
-		return errors.New("usage: sentra sync")
+	outDir, err := parseSyncArgs(args)
+	if err != nil {
+		return err
 	}
 
 	verbosef("Starting sync operation...")
@@ -42,11 +43,24 @@ func runSync(args []string) error {
 	}
 	verbosef("Scan root: %s", scanRoot)
 
+	destRoot := scanRoot
+	if strings.TrimSpace(outDir) != "" {
+		destRoot = filepath.Clean(expandUserHome(outDir))
+	}
+	verbosef("Sync destination root: %s", destRoot)
+
 	serverURL, err := serverURLFromEnv()
 	if err != nil {
 		return err
 	}
 	verbosef("Server URL: %s", serverURL)
+	if strings.TrimSpace(outDir) == "" {
+		warnf("⚠ sentra sync will overwrite local env files under %s based on remote state", scanRoot)
+		infof("Hint: use `sentra sync --out <dir>` to write into a separate folder")
+	}
+
+	// Vault key is only needed when decrypting sentra-v1 files; fetch lazily.
+	var vaultKey []byte
 
 	sp := startSpinner("Fetching projects from remote...")
 	projects, err := fetchRemoteProjects(serverURL, sess.AccessToken)
@@ -78,12 +92,14 @@ func runSync(args []string) error {
 			continue
 		}
 		sp2.Set(fmt.Sprintf("Syncing %s (%d/%d)...", root, i+1, len(projects)))
-		localRepo := filepath.Join(scanRoot, filepath.FromSlash(root))
+		localRepo := filepath.Join(destRoot, filepath.FromSlash(root))
 		verbosef("Checking local repo: %s", localRepo)
-		if !isDir(localRepo) {
-			verbosef("Skipping %s: local directory not found", root)
-			skippedMissing++
-			continue
+		if strings.TrimSpace(outDir) == "" {
+			if !isDir(localRepo) {
+				verbosef("Skipping %s: local directory not found", root)
+				skippedMissing++
+				continue
+			}
 		}
 
 		verbosef("Fetching files for project: %s", root)
@@ -101,7 +117,7 @@ func runSync(args []string) error {
 		scanned++
 		for _, f := range files {
 			verbosef("Processing file: %s (size: %d bytes, cipher: %s)", f.Path, f.Size, f.Cipher)
-			plain, err := decryptRemoteExportFile(f)
+			plain, err := decryptRemoteExportFile(serverURL, sess.AccessToken, &vaultKey, f)
 			if err != nil {
 				sp2.StopInfo("")
 				return err
@@ -123,7 +139,7 @@ func runSync(args []string) error {
 				return fmt.Errorf("unexpected file path received from server")
 			}
 
-			outPath := filepath.Join(scanRoot, filepath.FromSlash(rel))
+			outPath := filepath.Join(destRoot, filepath.FromSlash(rel))
 			verbosef("Writing file to: %s", outPath)
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				sp2.StopInfo("")
@@ -138,12 +154,41 @@ func runSync(args []string) error {
 		}
 	}
 	sp2.StopSuccess(fmt.Sprintf("✔ synced %d env file(s) across %d project(s)", written, scanned))
-	if skippedMissing > 0 {
-		warnf("⚠ %d project(s) missing locally under %s", skippedMissing, scanRoot)
-		verbosef("Missing projects were skipped (not found in scan root)")
+	if strings.TrimSpace(outDir) == "" {
+		if skippedMissing > 0 {
+			warnf("⚠ %d project(s) missing locally under %s", skippedMissing, scanRoot)
+			verbosef("Missing projects were skipped (not found in scan root)")
+		}
 	}
 	verbosef("Sync completed: %d file(s) written, %d project(s) synced, %d skipped", written, scanned, skippedMissing)
 	return nil
+}
+
+func parseSyncArgs(args []string) (out string, err error) {
+	// sentra sync [--out <dir>]
+	if len(args) == 0 {
+		return "", nil
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--out", "-o":
+			if i+1 >= len(args) {
+				return "", errors.New("usage: sentra sync [--out <dir>]")
+			}
+			if strings.TrimSpace(out) != "" {
+				return "", errors.New("sync: --out provided multiple times")
+			}
+			out = strings.TrimSpace(args[i+1])
+			if out == "" {
+				return "", errors.New("usage: sentra sync [--out <dir>]")
+			}
+			i++
+		default:
+			return "", errors.New("usage: sentra sync [--out <dir>]")
+		}
+	}
+	return out, nil
 }
 
 func fetchRemoteProjects(serverURL string, accessToken string) ([]remoteProject, error) {
@@ -210,7 +255,7 @@ func fetchRemoteExport(serverURL string, accessToken string, root string) ([]rem
 	return files, nil
 }
 
-func decryptRemoteExportFile(f remoteExportFile) ([]byte, error) {
+func decryptRemoteExportFile(serverURL string, accessToken string, vaultKey *[]byte, f remoteExportFile) ([]byte, error) {
 	cipherName := strings.TrimSpace(f.Cipher)
 	blobB64 := strings.TrimSpace(f.BlobB64)
 	if blobB64 == "" && strings.TrimSpace(f.StorageKey) != "" {
@@ -241,9 +286,35 @@ func decryptRemoteExportFile(f remoteExportFile) ([]byte, error) {
 		blobB64 = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	plain, err := auth.DecryptEnvBlob(cipherName, blobB64)
+	if strings.TrimSpace(cipherName) == "sentra-v1" {
+		if vaultKey != nil && len(*vaultKey) == 0 {
+			k, err := ensureVaultKey(serverURL, accessToken)
+			if err != nil {
+				return nil, err
+			}
+			*vaultKey = k
+		}
+		plain, err := auth.DecryptEnvBlobWithKey(cipherName, *vaultKey, blobB64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt file (%s)", strings.TrimSpace(f.Path))
+		}
+		return plain, nil
+	}
+
+	plain, err := auth.DecryptEnvBlobLegacy(cipherName, blobB64)
 	if err != nil {
+		if strings.TrimSpace(cipherName) == "ed25519+aes-256-gcm-v1" {
+			return nil, fmt.Errorf("failed to decrypt legacy file (%s): this file was encrypted with a device-local key; re-push it from the original machine to migrate", strings.TrimSpace(f.Path))
+		}
 		return nil, fmt.Errorf("failed to decrypt file (%s)", strings.TrimSpace(f.Path))
 	}
 	return plain, nil
+}
+
+func decryptEnvFile(cipherName string, blobB64 string, vaultKey []byte) ([]byte, error) {
+	c := strings.TrimSpace(cipherName)
+	if c == "sentra-v1" {
+		return auth.DecryptEnvBlobWithKey(c, vaultKey, blobB64)
+	}
+	return auth.DecryptEnvBlobLegacy(c, blobB64)
 }

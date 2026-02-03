@@ -15,6 +15,18 @@ func Execute(args []string) error {
 		return usageError()
 	}
 
+	// Global flags / commands.
+	switch args[0] {
+	case "version", "--version", "-v", "-V":
+		if len(args) > 1 {
+			return errors.New("sentra version does not accept flags/args")
+		}
+		printVersion()
+		return nil
+	case "help", "--help", "-h":
+		return usageError()
+	}
+
 	switch args[0] {
 	case "login":
 		if len(args) > 1 {
@@ -80,7 +92,48 @@ func Execute(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sentra login | sentra storage setup|status|test|reset | sentra projects | sentra history | sentra commits <project> | sentra files <project> [--at <commit>] | sentra export <project> [--at <commit>] | sentra who | sentra scan | sentra overview | sentra add | sentra status | sentra commit | sentra sync | sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify] | sentra push | sentra wipe | sentra doctor")
+	return errors.New(strings.TrimSpace(`sentra
+
+Usage:
+  sentra <command> [args]
+
+Global:
+  sentra version | --version
+  sentra help | --help | -h
+
+Auth:
+  sentra login              Login and create a session
+  sentra who                Show current logged-in user
+
+Remote (cloud):
+  sentra projects           List remote projects
+  sentra history            List remote commit history (all projects)
+  sentra commits <project>  List commits for a project
+  sentra files <project> [--at <commit>]
+                           List files for a project (optionally at a commit)
+  sentra export <project> [--at <commit>] [--out <dir>]
+                           Download and decrypt files into a folder
+  sentra sync [--out <dir>] Download latest env files and write them locally
+  sentra push               Push pending local commits to remote
+
+Local workflow:
+  sentra scan               Scan repos under scan root for env files
+  sentra add [path]         Stage env files (default: .)
+  sentra status             Show local staged/changed env files
+  sentra commit -m <msg>    Create a local commit from staged env files
+  sentra log [all|pending|pushed|rm <id>|clear|prune <id|all>|verify]
+                           Manage local commit log
+
+Storage (BYOS):
+  sentra storage setup      Configure S3-compatible storage
+  sentra storage status     Show current storage config
+  sentra storage test       Test storage connectivity
+  sentra storage reset      Remove storage config
+
+Maintenance:
+  sentra doctor             Diagnose connectivity/config issues
+  sentra wipe               Delete ALL local Sentra state
+`))
 }
 
 func runScan() error {

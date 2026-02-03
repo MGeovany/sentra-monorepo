@@ -20,11 +20,6 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-func isVerbose() bool {
-	v := strings.TrimSpace(os.Getenv("SENTRA_VERBOSE"))
-	return v == "1" || strings.EqualFold(v, "true")
-}
-
 func oneLine(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -108,6 +103,11 @@ func runPush() error {
 	if err != nil {
 		return err
 	}
+
+	vaultKey, err := ensureVaultKey(serverURL, sess.AccessToken)
+	if err != nil {
+		return err
+	}
 	endpoint := serverURL + "/push"
 	verbosef("Server URL: %s", serverURL)
 	verbosef("Push endpoint: %s", endpoint)
@@ -166,7 +166,7 @@ func runPush() error {
 		}
 
 		verbosef("Building push request for commit %s...", c.ID)
-		reqs, err := buildPushRequestV1(context.Background(), scanRoot, machineID, name, c, s3cfg, s3c, byos, userID)
+		reqs, err := buildPushRequestV1(context.Background(), scanRoot, machineID, name, vaultKey, c, s3cfg, s3c, byos, userID)
 		if err != nil {
 			sp.StopInfo("")
 			return err
@@ -223,7 +223,11 @@ func runPush() error {
 				}
 				respBody, _ := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()
+				trace := responseTrace(resp)
 				verbosef("Response received: status=%d, size=%d bytes, elapsed=%v", resp.StatusCode, len(respBody), elapsed)
+				if trace != "" {
+					verbosef("Response trace: %s", trace)
+				}
 
 				if resp.StatusCode == http.StatusTooManyRequests {
 					retryAfter := 2 * time.Second
@@ -241,6 +245,9 @@ func runPush() error {
 					msg := oneLine(string(respBody))
 					if msg == "" {
 						msg = strings.TrimSpace(http.StatusText(resp.StatusCode))
+					}
+					if trace != "" {
+						msg = msg + "; " + trace
 					}
 					if isVerbose() {
 						sp.StopInfo("")

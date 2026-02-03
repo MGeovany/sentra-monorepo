@@ -15,6 +15,7 @@ import (
 
 var (
 	ErrDBNotConfigured = errors.New("db not configured")
+	ErrDBMisconfigured = errors.New("db misconfigured")
 	ErrTooManyMachines = errors.New("too many machines")
 )
 
@@ -85,6 +86,9 @@ func (s SupabaseMachineStore) Register(ctx context.Context, userID, machineID, m
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return ErrDBMisconfigured
+	}
 
 	// Map known DB-enforced limits to typed errors.
 	var apiErr struct {
@@ -97,6 +101,10 @@ func (s SupabaseMachineStore) Register(ctx context.Context, userID, machineID, m
 		}
 		if strings.TrimSpace(apiErr.Code) == "P0001" && strings.Contains(strings.ToLower(apiErr.Message), "too many machines") {
 			return ErrTooManyMachines
+		}
+		msg := strings.ToLower(strings.TrimSpace(apiErr.Message))
+		if strings.Contains(msg, "does not exist") || strings.Contains(msg, "no unique") || strings.Contains(msg, "on conflict") || strings.Contains(msg, "permission denied") {
+			return ErrDBMisconfigured
 		}
 	}
 
@@ -141,6 +149,9 @@ func (s SupabaseMachineStore) DevicePubKey(ctx context.Context, userID, machineI
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return "", false, ErrDBMisconfigured
+		}
 		return "", false, fmt.Errorf("supabase select machines failed: status=%d body=%s", resp.StatusCode, string(b))
 	}
 

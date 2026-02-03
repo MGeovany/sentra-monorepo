@@ -104,6 +104,9 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 			case repo.ErrDBNotConfigured:
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = io.WriteString(w, "db not configured")
+			case repo.ErrDBMisconfigured:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, "db misconfigured")
 			default:
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = io.WriteString(w, "device key lookup failed")
@@ -124,6 +127,9 @@ func registerMachineHandler(store repo.MachineStore) http.Handler {
 			case repo.ErrDBNotConfigured:
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = io.WriteString(w, "db not configured")
+			case repo.ErrDBMisconfigured:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, "db misconfigured")
 			case repo.ErrTooManyMachines:
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				w.WriteHeader(http.StatusTooManyRequests)

@@ -18,7 +18,7 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName string, c commit.Commit, s3cfg storage.S3Config, s3 *minio.Client, byos bool, userID string) ([]pushRequestV1, error) {
+func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName string, vaultKey []byte, c commit.Commit, s3cfg storage.S3Config, s3 *minio.Client, byos bool, userID string) ([]pushRequestV1, error) {
 	pathsByRoot := map[string][]string{}
 	for p := range c.Files {
 		root := projectRootFromPath(p)
@@ -61,7 +61,7 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 			}
 
 			shaPlain := auth.SHA256Hex(plain)
-			cipherName, blobB64, size, err := auth.EncryptEnvBlob(plain)
+			cipherName, blobB64, size, err := auth.EncryptEnvBlobWithKey(vaultKey, plain)
 			if err != nil {
 				return nil, err
 			}
