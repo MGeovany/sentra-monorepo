@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,74 @@ import (
 	"github.com/mgeovany/sentra/cli/internal/storage"
 	"github.com/minio/minio-go/v7"
 )
+
+type missingCommitFile struct {
+	Path string
+	Abs  string
+}
+
+type missingCommitFilesError struct {
+	CommitID  string
+	Message   string
+	ScanRoot  string
+	Missing   []missingCommitFile
+	CauseHint error
+}
+
+func (e missingCommitFilesError) Error() string {
+	id := strings.TrimSpace(e.CommitID)
+	msg := strings.TrimSpace(e.Message)
+	scanRoot := strings.TrimSpace(e.ScanRoot)
+
+	out := strings.Builder{}
+	out.WriteString("push failed: missing env file(s) referenced by a local commit\n")
+	if id != "" {
+		out.WriteString("- Commit: ")
+		out.WriteString(id)
+		out.WriteString("\n")
+	}
+	if msg != "" {
+		out.WriteString("- Message: ")
+		out.WriteString(msg)
+		out.WriteString("\n")
+	}
+	if scanRoot != "" {
+		out.WriteString("- Scan root: ")
+		out.WriteString(scanRoot)
+		out.WriteString("\n")
+	}
+	out.WriteString("- Missing:\n")
+	for _, m := range e.Missing {
+		p := strings.TrimSpace(m.Path)
+		a := strings.TrimSpace(m.Abs)
+		if p == "" {
+			continue
+		}
+		out.WriteString("  - ")
+		out.WriteString(p)
+		if a != "" {
+			out.WriteString(" (expected at ")
+			out.WriteString(a)
+			out.WriteString(")")
+		}
+		out.WriteString("\n")
+	}
+	out.WriteString("Fix:\n")
+	out.WriteString("  1) Restore the missing file(s) and re-run: sentra push\n")
+	if id != "" {
+		out.WriteString("  2) Or drop the broken commit: sentra log prune ")
+		out.WriteString(id)
+		out.WriteString(" (or sentra log rm ")
+		out.WriteString(id)
+		out.WriteString(")\n")
+	}
+	if e.CauseHint != nil {
+		out.WriteString("\nDetails: ")
+		out.WriteString(strings.TrimSpace(e.CauseHint.Error()))
+		out.WriteString("\n")
+	}
+	return strings.TrimSpace(out.String())
+}
 
 func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName string, vaultKey []byte, c commit.Commit, s3cfg storage.S3Config, s3 *minio.Client, byos bool, userID string) ([]pushRequestV1, error) {
 	pathsByRoot := map[string][]string{}
@@ -45,6 +114,7 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 	}
 
 	out := make([]pushRequestV1, 0, len(roots))
+	var missing []missingCommitFile
 	for _, root := range roots {
 		paths := pathsByRoot[root]
 		sort.Strings(paths)
@@ -55,7 +125,8 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 			plain, err := os.ReadFile(abs)
 			if err != nil {
 				if os.IsNotExist(err) {
-					return nil, fmt.Errorf("cannot read %s: file not found at %s (commit=%s). Fix: restore the file, or run: sentra log prune %s (or sentra log rm %s)", p, abs, strings.TrimSpace(c.ID), strings.TrimSpace(c.ID), strings.TrimSpace(c.ID))
+					missing = append(missing, missingCommitFile{Path: p, Abs: abs})
+					continue
 				}
 				return nil, fmt.Errorf("cannot read %s: %w", p, err)
 			}
@@ -112,6 +183,16 @@ func buildPushRequestV1(ctx context.Context, scanRoot, machineID, machineName st
 			},
 			Files: files,
 		})
+	}
+
+	if len(missing) > 0 {
+		return nil, missingCommitFilesError{
+			CommitID:  strings.TrimSpace(c.ID),
+			Message:   strings.TrimSpace(c.Message),
+			ScanRoot:  scanRoot,
+			Missing:   missing,
+			CauseHint: errors.New("a tracked env file was deleted or moved after creating the commit"),
+		}
 	}
 
 	return out, nil
